@@ -2,21 +2,21 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
-public class HandLayout : MonoBehaviour
+public class HandLayoutHorizontal : MonoBehaviour
 {
-    public List<GameObject> cards = new List<GameObject>();
+    public List<GameObject> cards = new();
     public float yValue = 1f;
     public float spacing = 0.67f;
+    public bool backwards = false;
 
-    private readonly float cardSizeX = 1.289f;
+    private float multiplier = 1f; // Affected by "backwards" bool, will ensure correct snapping for hands on the other side
+
+    private readonly float cardWidth = 0.87f;
     void Start()
     {
+        if (backwards) { multiplier *= -1f; }
+        yValue *= multiplier;
         InvokeRepeating(nameof(UpdateVariables), 0f, 0.25f);
-    }
-
-    void Update()
-    {
-        
     }
 
     void UpdateVariables()
@@ -34,9 +34,10 @@ public class HandLayout : MonoBehaviour
         }
 
         int sortingOrder = 1;
+        if (backwards) { sortingOrder = amountOfCards; }
         for (int i = 0; i < cards.Count; i++)
         {
-            cards[i].GetComponent<SpriteRenderer>().sortingOrder = sortingOrder + i;
+            cards[i].GetComponent<SpriteRenderer>().sortingOrder = (int)(sortingOrder + (i * multiplier));
             cards[i].transform.localPosition = new Vector3(cards[i].transform.position.x, yValue, 0);
         }
         if (cards.Count > 1)
@@ -102,6 +103,6 @@ public class HandLayout : MonoBehaviour
     }
     private float GetAnchorXPosition()
     {
-        return transform.parent.position.x - (cardSizeX / 2);
+        return transform.parent.position.x - ((cardWidth / 2) * multiplier);
     }
 }
