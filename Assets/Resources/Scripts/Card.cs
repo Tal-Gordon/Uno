@@ -19,54 +19,49 @@ public class Card : MonoBehaviour
     [SerializeField] int number;
     [SerializeField] CardColor color;
 
+    public bool canPlay;
+
     private SpriteRenderer cardSprite;
+    private BoxCollider2D boxCollider;
+    private GameController gameController;
+    private static Sprite[] cardSpriteSheet;
+    private Player owner;
 
     private float ZRotation = 0f;
+    private bool potentialToPlay;
+    private readonly string gameControllerName = "Board";
 
-    private static Sprite[] cardSpriteSheet;
     void Start()
     {
-        cardSpriteSheet = Resources.LoadAll<Sprite>("Graphics/Cards");
+        boxCollider = GetComponent<BoxCollider2D>();
         cardSprite = GetComponent<SpriteRenderer>();
-        int spritePathNum = 999;
+        boxCollider.size = new Vector2(cardSprite.size.x, cardSprite.size.y);
+        boxCollider.offset = new Vector2(Mathf.Abs(transform.position.x), 0);
 
-        switch (int.Parse(transform.parent.parent.name.Split(' ').Last()))
-        {
-            case 2:
-                ZRotation = -90f;
-                break;
-            case 3:
-                ZRotation = -180f;
-                break;
-            case 4:
-                ZRotation = -270f;
-                break;
-        }
-        transform.Rotate(new Vector3(0, 0, ZRotation));
+        gameController = GameObject.Find(gameControllerName).GetComponent<GameController>();
+        cardSpriteSheet = Resources.LoadAll<Sprite>("Graphics/Cards");
 
-        switch (color)
+        if (transform.parent.name == "Cards")
         {
-            case CardColor.Red:
-                spritePathNum = 24 + number; break; 
-            case CardColor.Green:
-                spritePathNum = 50 + number; break; 
-            case CardColor.Yellow:
-                spritePathNum = 11 + number; break;
-            case CardColor.Blue:
-                spritePathNum = 37 + number; break;
-            case CardColor.Wild:
-                switch (number)
-                {
-                    case 14:
-                        spritePathNum = 1; break;
-                    case 15:
-                        spritePathNum = 6; break;
-                    default:
-                        spritePathNum = 0; break;
-                }
-                break;
+            potentialToPlay = true;
+            owner = transform.parent.parent.GetComponent<Player>();
+
+            switch (int.Parse(transform.parent.parent.name.Split(' ').Last()))
+            {
+                case 2:
+                    ZRotation = -90f;
+                    break;
+                case 3:
+                    ZRotation = -180f;
+                    break;
+                case 4:
+                    ZRotation = -270f;
+                    break;
+            }
+            transform.Rotate(new Vector3(0, 0, ZRotation));
         }
-        cardSprite.sprite = cardSpriteSheet[spritePathNum];
+
+        UpdateTexture();
 
         /*
             1 - wild
@@ -78,19 +73,17 @@ public class Card : MonoBehaviour
          */
     }
 
-    public Card(int number, CardColor color)
-    { 
-        this.number = number;
-        this.color = color;
-    }
-
     public int GetNumber() { return this.number; }
     public CardColor GetColor() { return this.color; }
-    public void ChangeNumber(int newNumber)
+    public void SetNumber(int newNumber)
     {
         this.number = newNumber;
     }
-    public void ChangeColor(CardColor newColor)
+    public void SetColor(CardColor newColor)
+    {
+        this.color = newColor;
+    }
+    public void ColorMutator(CardColor newColor)
     { 
         //mutator that changes the color of a wild card to make the color noticeable
         if (GetNumber() == 14)
@@ -136,4 +129,49 @@ public class Card : MonoBehaviour
             Debug.Log("Error: card isn't wild, cannot change color");
         }
     }
+
+    private void OnMouseDown()
+    {
+        if (potentialToPlay && owner.canPlay && canPlay)
+        {
+            PlayCard();
+        }
+    }
+
+    void PlayCard()
+    {
+        gameController.SetTopCard(this);
+        owner.FinishTurn(gameObject.GetComponent<Card>());
+        //Destroy(gameObject);
+    }
+
+    public void UpdateTexture()
+    {
+        int spritePathNum = 0;
+        switch (color)
+        {
+            case CardColor.Red:
+                spritePathNum = 24 + number; break;
+            case CardColor.Green:
+                spritePathNum = 50 + number; break;
+            case CardColor.Yellow:
+                spritePathNum = 11 + number; break;
+            case CardColor.Blue:
+                spritePathNum = 37 + number; break;
+            case CardColor.Wild:
+                switch (number)
+                {
+                    case 14:
+                        spritePathNum = 1; break;
+                    case 15:
+                        spritePathNum = 6; break;
+                    default:
+                        spritePathNum = 0; break;
+                }
+                break;
+        }
+        cardSprite.sprite = cardSpriteSheet[spritePathNum];
+    }
+
+    public void DestroyCard() { Destroy(gameObject); }
 }
