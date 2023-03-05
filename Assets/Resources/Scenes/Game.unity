@@ -2426,6 +2426,7 @@ Animator:
   m_HasTransformHierarchy: 1
   m_AllowConstantClipSamplingOptimization: 1
   m_KeepAnimatorStateOnDisable: 0
+  m_WriteDefaultValuesOnDisable: 0
 --- !u!4 &1824022601 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 4649690348095709197, guid: e26ec21c47266e645a19b628ff64229f, type: 3}
