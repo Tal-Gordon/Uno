@@ -3,12 +3,16 @@ using System.Collections.Generic;
 using System.Linq;
 using Unity.Collections.LowLevel.Unsafe;
 using UnityEngine;
+using TMPro;
 
 public class Player : MonoBehaviour
 {
     public List<Card> deck = new();
 
-    public bool canPlay;
+    public string playerName;
+
+    private bool canPlay;
+    private int playerSelectedImage;
 
     [SerializeField] GameController gameController;
     private Card topCard;
@@ -16,9 +20,11 @@ public class Player : MonoBehaviour
     private bool unoed;
     private readonly string cardsName = "Cards";
     private readonly string gameControllerName = "Board";
+    private readonly string usernameName = "Username";
     void Start()
     {
         gameController = GameObject.Find(gameControllerName).GetComponent<GameController>();
+        gameObject.transform.Find(usernameName).GetComponent<TextMeshProUGUI>().text = playerName;
         UpdateDeck();
     }
 
@@ -61,6 +67,7 @@ public class Player : MonoBehaviour
         StartCoroutine(WaitForDestroyCardBeforeUpdateDeck());
         gameController.PlayerFinishedTurn(playerIndex);
     }
+    public bool GetCanPlay() { return canPlay; }
 
     private IEnumerator WaitForDestroyCardBeforeUpdateDeck()
     {

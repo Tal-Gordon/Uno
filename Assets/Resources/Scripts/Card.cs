@@ -132,7 +132,7 @@ public class Card : MonoBehaviour
 
     private void OnMouseDown()
     {
-        if (potentialToPlay && owner.canPlay && canPlay)
+        if (potentialToPlay && owner.GetCanPlay() && canPlay)
         {
             PlayCard();
         }
