@@ -10,8 +10,6 @@ using System.Threading;
 
 public class Server : MonoBehaviour
 {
-    public TMP_InputField console;
-
     public string serverName;
     public bool passwordLocked;
 
@@ -20,28 +18,35 @@ public class Server : MonoBehaviour
     private Thread receiveThread;
 
     private List<string> receivedMessages = new();
+    [SerializeField] List<Socket> connectedClients = new();
     private readonly string multicastAddress = "239.255.42.99";
     private readonly ushort multicastPort = 15000;
-    private readonly ushort defaultPort = 7777;
+    private readonly ushort defaultPort = 8888;
     private ushort userPort;
     private int numOfConnected = 1;
+    private string localIP;
 
     void Start()
     {
+        // Trick to find local IP address
+        // Connecting a UDP socket and reading it's local endpoint
+        using (Socket socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, 0))
+        {
+            socket.Connect("8.8.8.8", 65530);
+            IPEndPoint endPoint = socket.LocalEndPoint as IPEndPoint;
+            localIP = endPoint.Address.ToString();
+        }
+        //localIP = "127.0.0.1"; // Remove later
+
         multicastServer = SetupMulticastSocket();
         server = SetupSocket();
-
-        // Start the thread to receive data
-        receiveThread = new Thread(() => ReceiveData(server));
-        receiveThread.Start();
-        InvokeRepeating(nameof(SendMessageToMulticastGroup), 0f, 0.1f);
-        InvokeRepeating(nameof(ProcessReceivedMessages), 0f, 0.1f);
+        
+        InvokeRepeating(nameof(SendMessageToMulticastGroup), 0f, 3f);
     }
 
     private Socket SetupSocket()
     {
-        IPHostEntry ipHost = Dns.GetHostEntry(Dns.GetHostName());
-        IPAddress ipAddress = ipHost.AddressList[0];
+        IPAddress ipAddress = IPAddress.Parse(localIP);
         IPEndPoint localEndPoint = new(ipAddress, defaultPort);
 
         Socket server = new(ipAddress.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
@@ -49,92 +54,96 @@ public class Server : MonoBehaviour
         server.Bind(localEndPoint);
         server.Listen(3);
 
+        server.BeginAccept(
+            (ar) =>
+            {
+                Socket listener = (Socket)ar.AsyncState;
+                Socket client = listener.EndAccept(ar);
+
+                connectedClients.Add(client);
+                Thread clientThread = new(() => { HandleClient(client); });
+                clientThread.Start();
+            }
+        , server);
+
         return server;
     }
 
     private Socket SetupMulticastSocket()
     {
-        // Declare new socket
         Socket socket = new(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
-
-        // Multicast IP-address
         IPAddress ipAddress = IPAddress.Parse(multicastAddress);
 
-        // Join multicast group
         socket.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.AddMembership, new MulticastOption(ipAddress));
-
-        // TTL (Time to live)
         socket.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.MulticastTimeToLive, 2);
 
-        // Create an endpoint
-        IPEndPoint ipep = new(ipAddress, multicastPort);
+        IPEndPoint localEndPoint = new(ipAddress, multicastPort);
+        socket.Connect(localEndPoint);
 
-        // Connect to the endpoint
-        socket.Connect(ipep);
-
-        // Return socket
         return socket;
     }
 
     public void SendMessageToMulticastGroup()
     {
-        // Scan message
         byte[] buffer = new byte[1024];
         string msg = string.Empty;
-        if (console != null) { msg = console.text.Trim(); }
-        else
-        {
-            // Trick to find local IP address
-            // Connecting a UDP socket and reading it's local endpoint
-            string localIP;
-            using (Socket socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, 0))
-            {
-                socket.Connect("8.8.8.8", 65530);
-                IPEndPoint endPoint = socket.LocalEndPoint as IPEndPoint;
-                localIP = endPoint.Address.ToString();
-            }
 
-            msg = $"{localIP};{defaultPort};{serverName};{numOfConnected};{passwordLocked}";
-            // Servers' own IP address, server name, number of already connected clients, password requirement
-            // Delimiter is ;
-        }
+        msg = $"{localIP};{defaultPort};{serverName};{numOfConnected};{passwordLocked}";
+        // Servers' own IP address, server name, number of already connected clients, password requirement
+        // Delimiter is ;
         buffer = Encoding.Unicode.GetBytes(msg);
 
-        // Send message
         multicastServer.BeginSend(new List<ArraySegment<byte>> { new ArraySegment<byte>(buffer) }, SocketFlags.None,
             (ar) =>
             {
                 int bytesSent = multicastServer.EndSend(ar);
-                if (msg.Equals("Bye!", StringComparison.Ordinal))
-                {
-                    try
-                    {
-                        multicastServer.Shutdown(SocketShutdown.Both);
-                    }
-                    finally
-                    {
-                        multicastServer.Close();
-                    }
-                }
+                //if (msg.Equals("Bye!", StringComparison.Ordinal))
+                //{
+                //    try
+                //    {
+                //        multicastServer.Shutdown(SocketShutdown.Both);
+                //    }
+                //    finally
+                //    {
+                //        multicastServer.Close();
+                //    }
+                //}
             }
             , null);
     }
 
     // Thread to continuously receive data
-    private void ReceiveData(Socket client)
+    private void HandleClient(Socket client)
     {
         while (true)
         {
             try
             {
-                server.AcceptAsync();
-                byte[] data = new byte[1024];
-                int bytesRead = client.Receive(data, 0, data.Length, SocketFlags.None);
-                string str = Encoding.Unicode.GetString(data, 0, bytesRead);
-                string receivedMessage = str.Trim();
-                lock (receivedMessages)
+                byte[] buffer = new byte[1024];
+                int bytesRead = client.Receive(buffer, 0, buffer.Length, SocketFlags.None);
+                string receivedMessage = Encoding.Unicode.GetString(buffer, 0, bytesRead).Trim();
+
+                Array.Clear(buffer, 0, buffer.Length);
+
+                try
                 {
-                    receivedMessages.Add(receivedMessage);
+                    string[] message = receivedMessage.Split(";");
+
+                    string clientIP = message[0];
+                    string clientName = message[1];
+
+                    // Process message logic
+
+                    string messageToSend = "Verified";
+
+                    IPEndPoint remoteEndPoint = new(IPAddress.Parse(clientIP), defaultPort);
+
+                    buffer = Encoding.Unicode.GetBytes(messageToSend);
+                    int bytesSent = client.Send(buffer, 0, buffer.Length, SocketFlags.None);
+                }
+                catch (Exception e)
+                {
+                    Debug.LogError(e);
                 }
             }
             catch
@@ -144,25 +153,19 @@ public class Server : MonoBehaviour
         }
     }
 
-    // Continuously process received data
-    private void ProcessReceivedMessages()
+    private string ProcessClientData(string data)
     {
-        lock (receivedMessages)
+        string[] dataArr = data.Split(";");
+        IPAddress address;
+        if (IPAddress.TryParse(dataArr[0], out address))
         {
-            foreach (string receivedMessage in receivedMessages)
-            {
-                Debug.Log($"Received: {receivedMessage}");
+            string clientName = dataArr[1];
 
-                try
-                {
-                    // Process message logic
-                }
-                catch (Exception e)
-                {
-                    Debug.Log(e);
-                }
-            }
-            receivedMessages.Clear();
+            return "Verified";
+        }
+        else
+        {
+            return "Rejected";
         }
     }
 }

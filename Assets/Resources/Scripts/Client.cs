@@ -16,7 +16,7 @@ public class Client : MonoBehaviour
 
     private Socket multicastClient;
     private Socket client;
-    private List<string> receivedMessages = new();
+    private List<string> clientReceivedMessages = new();
     private Thread multicastReceiveThread;
     private JoinMenuController joinMenuController;
 
@@ -45,20 +45,10 @@ public class Client : MonoBehaviour
 
     private Socket SetupMulticastClient()
     {
-        // Create new socket
         Socket socket = new(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
-
-        // Create IP endpoint
-        IPEndPoint ipep = new(IPAddress.Any, multicastPort);
-
-        // Bind endpoint to the socket
-        socket.Bind(ipep);
-
-        // Multicast IP-address
-        IPAddress ipAddress = IPAddress.Parse(multicastAddress);
-
-        // Add socket to the multicast group
-        socket.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.AddMembership, new MulticastOption(ipAddress, IPAddress.Any));
+        IPEndPoint localEndPoint = new(IPAddress.Any, multicastPort);
+        socket.Bind(localEndPoint);
+        socket.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.AddMembership, new MulticastOption(IPAddress.Parse(multicastAddress), IPAddress.Any));
 
         return socket;
     }
@@ -69,10 +59,34 @@ public class Client : MonoBehaviour
 
         Socket client = new(ipAddressToConnect.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
 
-        client.Connect(localEndPoint);
+        try
+        {
+            var connectResult = client.BeginConnect(localEndPoint, null, null);
+
+            // Wait for the connection to complete asynchronously
+            bool isConnected = connectResult.AsyncWaitHandle.WaitOne(TimeSpan.FromSeconds(5), true);
+
+            if (isConnected)
+            {
+                client.EndConnect(connectResult);
+            }
+            else
+            {
+                Debug.LogError("Connection timed out");
+                client.Close();
+                return null;
+            }
+        }
+        catch (Exception e)
+        {
+            Debug.LogError(e);
+            client.Close();
+            return null;
+        }
 
         return client;
     }
+
     // Thread to continuously receive data on multicast group
     private void ReceiveDataOnMulticast(Socket client)
     {
@@ -84,9 +98,9 @@ public class Client : MonoBehaviour
                 int bytesRead = client.Receive(data, 0, data.Length, SocketFlags.None);
                 string str = Encoding.Unicode.GetString(data, 0, bytesRead);
                 string receivedMessage = str.Trim();
-                lock (receivedMessages)
+                lock (clientReceivedMessages)
                 {
-                    receivedMessages.Add(receivedMessage);
+                    clientReceivedMessages.Add(receivedMessage);
                 }
             }
             catch
@@ -99,9 +113,9 @@ public class Client : MonoBehaviour
     // Continuously process received multicast data
     private void ProcessReceivedMulticastMessages()
     {
-        lock (receivedMessages)
+        lock (clientReceivedMessages)
         {
-            foreach (string receivedMessage in receivedMessages)
+            foreach (string receivedMessage in clientReceivedMessages)
             {
                 try
                 {
@@ -142,7 +156,7 @@ public class Client : MonoBehaviour
                 //    CancelInvoke(nameof(ProcessReceivedMulticastMessages)); break;
                 //}
             }
-            receivedMessages.Clear();
+            clientReceivedMessages.Clear();
         }
     }
 
@@ -167,19 +181,21 @@ public class Client : MonoBehaviour
 
         Socket client = SetupClient(ipAddress, port);
 
+        if (client == null) { return; }
+
         // Trick to find local IP address
         // Connecting a UDP socket and reading it's local endpoint
         string localIP;
-        using (Socket socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, 0))
+        using (Socket socket = new(AddressFamily.InterNetwork, SocketType.Dgram, 0))
         {
             socket.Connect("8.8.8.8", 65530);
             IPEndPoint endPoint = socket.LocalEndPoint as IPEndPoint;
             localIP = endPoint.Address.ToString();
         }
+        //localIP = "127.0.0.1"; // Remove later
 
         string messageToSend = $"{localIP};{clientName}";
         if (password) { messageToSend += ";something"; } // TODO
-        Debug.LogError($"Client sent: {messageToSend}");
 
         byte[] buffer = new byte[1024];
         buffer = Encoding.Unicode.GetBytes(messageToSend);
@@ -187,18 +203,29 @@ public class Client : MonoBehaviour
         if (client.Connected)
         {
             client.BeginSend(new List<ArraySegment<byte>> { new ArraySegment<byte>(buffer) }, SocketFlags.None,
-            (ar) =>
-            {
-                int bytesSent = client.EndSend(ar);
+                (ar) =>
+                {
+                    int bytesSent = client.EndSend(ar);
+                    Array.Clear(buffer, 0, buffer.Length);
+                }
+                , null);
 
-            }
-            , null);
+            client.BeginReceive(buffer, 0, buffer.Length, SocketFlags.None, 
+                (ar) =>
+                {
+                    try
+                    {
+                        int bytesRead = client.EndReceive(ar);
 
-            byte[] messageReceived = new byte[1024];
-            int byteReceived = client.Receive(messageReceived);
+                        string receivedString = Encoding.Unicode.GetString(buffer, 0, bytesRead);
 
-            string actualMessageReceived = Encoding.Unicode.GetString(messageReceived, 0, byteReceived);
-            Debug.LogError($"Message from Server: {actualMessageReceived}");
+                        Debug.LogError($"Server sent: {receivedString}");
+                    }
+                    catch (Exception e)
+                    {
+                        Debug.LogError(e);
+                    }
+                }, null);
         }
         else
         {
