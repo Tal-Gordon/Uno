@@ -8,6 +8,7 @@ using TMPro;
 public class Player : MonoBehaviour
 {
     public List<Card> deck = new();
+    public GameObject canvasProfile;
 
     public string playerName;
 
@@ -20,11 +21,12 @@ public class Player : MonoBehaviour
     private bool unoed;
     private readonly string cardsName = "Cards";
     private readonly string gameControllerName = "Board";
+    private readonly string profileName = "Profile";
     private readonly string usernameName = "Username";
     void Start()
     {
         gameController = GameObject.Find(gameControllerName).GetComponent<GameController>();
-        gameObject.transform.Find(usernameName).GetComponent<TextMeshProUGUI>().text = playerName;
+        canvasProfile.transform.Find(profileName).Find(usernameName).GetComponent<TextMeshProUGUI>().text = playerName;
         UpdateDeck();
     }
 

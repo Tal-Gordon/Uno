@@ -11,7 +11,7 @@ using UnityEngine.SceneManagement;
 
 public class Client : MonoBehaviour
 {
-    public List<(string IpAddress, ushort port, string serverName)> serversInfo = new();
+    public List<(string IpAddress, ushort port, string serverName, string numOfConnected, bool passReq)> serversInfo = new();
     public string clientName;
 
     private Socket multicastClient;
@@ -38,16 +38,13 @@ public class Client : MonoBehaviour
         joinMenuController = GetComponent<JoinMenuController>();
     }
 
-    void Update()
-    {
-
-    }
-
     private Socket SetupMulticastClient()
     {
         Socket socket = new(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+
         IPEndPoint localEndPoint = new(IPAddress.Any, multicastPort);
         socket.Bind(localEndPoint);
+
         socket.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.AddMembership, new MulticastOption(IPAddress.Parse(multicastAddress), IPAddress.Any));
 
         return socket;
@@ -125,7 +122,7 @@ public class Client : MonoBehaviour
                     ushort serverPort = ushort.Parse(message[1]);
                     string serverName = message[2];
                     string numOfConnected = message[3];
-                    bool passwordBool = bool.Parse(message[4]);
+                    bool passReq = bool.Parse(message[4]);
 
                     bool serverExists = false;
                     for (int i = 0; i < serversInfo.Count; i++)
@@ -133,15 +130,25 @@ public class Client : MonoBehaviour
                         if (serversInfo[i].IpAddress == serverIpAddress) 
                         { 
                             serverExists = true; 
-                            if (serversInfo[i].port != serverPort) { serversInfo[i] = (serversInfo[i].IpAddress, serverPort, serversInfo[i].serverName); }
+                            if (serversInfo[i].port != serverPort) { serversInfo[i] = (serversInfo[i].IpAddress, serverPort, serversInfo[i].serverName, numOfConnected, serversInfo[i].passReq); }
                             break;
                         }
                     }
                     if (!serverExists) 
                     { 
-                        serversInfo.Add((serverIpAddress, serverPort, serverName)); 
-                        AddServerToGameView(serverName, numOfConnected, passwordBool);
+                        serversInfo.Add((serverIpAddress, serverPort, serverName, numOfConnected, passReq)); 
+                        UpdateRenderedServers();
                     }
+
+                    //List<string> tempServerNames = joinMenuController.GetServersNameList();
+                    //for (int i = 0; i < serversInfo.Count; i++)
+                    //{
+                    //    if (!tempServerNames.Contains(serversInfo[i].serverName))
+                    //    {
+                    //        serversInfo.RemoveAt(i);
+                    //    }
+                    //}
+                    // Remove rendered unavailable servers
                 }
                 catch (Exception e)
                 {
@@ -160,9 +167,9 @@ public class Client : MonoBehaviour
         }
     }
 
-    private void AddServerToGameView(string serverName, string amountOfConnected, bool passwordRequirement = false)
+    private void UpdateRenderedServers()
     {
-        joinMenuController.AddServer(serverName, amountOfConnected, passwordRequirement);
+        joinMenuController.RerenderServers();
     }
 
     public void AskToJoin(string serverName, bool password = false)
@@ -219,7 +226,7 @@ public class Client : MonoBehaviour
 
                         string receivedString = Encoding.Unicode.GetString(buffer, 0, bytesRead);
 
-                        Debug.LogError($"Server sent: {receivedString}");
+                        Debug.Log($"Server sent: {receivedString}");
                     }
                     catch (Exception e)
                     {
@@ -231,5 +238,19 @@ public class Client : MonoBehaviour
         {
             Debug.LogError("Client not connected");
         }
+    }
+
+    public List<(string, string, bool)> GetServersInfo()
+    {
+        List<(string, string, bool)> toReturn = new();
+        for (int i = 0; i < serversInfo.Count; i++)
+        {
+            toReturn.Add((serversInfo[i].serverName, serversInfo[i].numOfConnected, serversInfo[i].passReq));
+        }
+        return toReturn;
+    }
+    private void OnDisable()
+    {
+        if (client != null) { CancelInvoke(); client.Close(); }
     }
 }

@@ -17,7 +17,6 @@ public class Server : MonoBehaviour
     private Socket server;
     private Thread receiveThread;
 
-    private List<string> receivedMessages = new();
     [SerializeField] List<Socket> connectedClients = new();
     private readonly string multicastAddress = "239.255.42.99";
     private readonly ushort multicastPort = 15000;
@@ -36,15 +35,15 @@ public class Server : MonoBehaviour
             IPEndPoint endPoint = socket.LocalEndPoint as IPEndPoint;
             localIP = endPoint.Address.ToString();
         }
-        //localIP = "127.0.0.1"; // Remove later
+        localIP = "127.0.0.1"; // Remove later
 
         multicastServer = SetupMulticastSocket();
-        server = SetupSocket();
+        server = SetupServer();
         
         InvokeRepeating(nameof(SendMessageToMulticastGroup), 0f, 3f);
     }
 
-    private Socket SetupSocket()
+    private Socket SetupServer()
     {
         IPAddress ipAddress = IPAddress.Parse(localIP);
         IPEndPoint localEndPoint = new(ipAddress, defaultPort);
@@ -143,7 +142,8 @@ public class Server : MonoBehaviour
                 }
                 catch (Exception e)
                 {
-                    Debug.LogError(e);
+                    Debug.Log(e); // Client likely disconnected
+                    if (receivedMessage == string.Empty) { client.Close(); break; }
                 }
             }
             catch
@@ -153,7 +153,7 @@ public class Server : MonoBehaviour
         }
     }
 
-    private string ProcessClientData(string data)
+    private string ProcessClientData(string data) // Incomplete, not in use yet
     {
         string[] dataArr = data.Split(";");
         IPAddress address;
@@ -167,5 +167,11 @@ public class Server : MonoBehaviour
         {
             return "Rejected";
         }
+    }
+    private void OnDisable()
+    {
+        CancelInvoke();
+        multicastServer.Close();
+        server.Close();
     }
 }

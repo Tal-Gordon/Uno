@@ -7,6 +7,8 @@ using UnityEngine.UI;
 public class MainMenu : MonoBehaviour
 {
     public GameObject connectionMenu;
+    public GameObject hostMenu;
+    public GameObject joinMenu;
 
     public Image MainMenuCardColor;
     public Image redButton;
@@ -54,10 +56,21 @@ public class MainMenu : MonoBehaviour
     }
     public void Join()
     {
-
+        joinMenu.SetActive(true);
     }
     public void Host()
     {
+        hostMenu.SetActive(true);
+    }
 
+    public void CloseButton()
+    {
+        GameObject button = UnityEngine.EventSystems.EventSystem.current.currentSelectedGameObject;
+        button.transform.parent.gameObject.SetActive(false);
+    }
+    public void BackArrow()
+    {
+        CloseButton();
+        MainMenuCardColor.color = new Color32(0, 0, 0, 255); //Black
     }
 }
