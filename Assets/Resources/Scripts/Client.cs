@@ -143,7 +143,6 @@ public class Client : MonoBehaviour
             (ar) =>
             {
                 int bytesSent = client.EndSend(ar);
-                Debug.Log(message);
                 Array.Clear(buffer, 0, buffer.Length);
             }
             , null);

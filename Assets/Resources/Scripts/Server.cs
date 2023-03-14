@@ -189,7 +189,6 @@ public class Server : MonoBehaviour
             {
                 foreach ((Socket sendingSocket ,string receivedMessage) in receivedMessages.ToList())
                 {
-                    Debug.Log(receivedMessage);
                     try
                     {
 
