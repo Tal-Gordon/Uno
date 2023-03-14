@@ -43,7 +43,7 @@ public class HostMenuController : MonoBehaviour
         {
             if (playersObjects[i].transform.GetChild(0).GetComponent<TextMeshProUGUI>().text == username)
             {
-                playersObjects[i].transform.GetChild(0).GetComponent<TextMeshProUGUI>().text = string.Empty;
+                playersObjects[i].transform.GetChild(0).GetComponent<TextMeshProUGUI>().text = "Waiting for player...";
                 return;
             }
         }

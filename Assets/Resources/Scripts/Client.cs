@@ -22,6 +22,7 @@ public class Client : MonoBehaviour
     private JoinMenuController joinMenuController;
 
     private List<string> receivedMessages = new();
+    private string localIP;
     private readonly string multicastAddress = "239.255.42.99";
     private readonly ushort multicastPort = 15000;
 
@@ -37,6 +38,15 @@ public class Client : MonoBehaviour
         StartCoroutine(ProcessReceivedMulticastData());
 
         joinMenuController = GetComponent<JoinMenuController>();
+
+        // Trick to find local IP address
+        // Connecting a UDP socket and reading it's local endpoint
+        using (Socket socket = new(AddressFamily.InterNetwork, SocketType.Dgram, 0))
+        {
+            socket.Connect("8.8.8.8", 65530);
+            IPEndPoint endPoint = socket.LocalEndPoint as IPEndPoint;
+            localIP = endPoint.Address.ToString();
+        }
     }
 
     private Socket SetupMulticastClient()
@@ -92,9 +102,9 @@ public class Client : MonoBehaviour
         byte[] buffer = new byte[8192];
         while (true)
         {
-            int bytesRead = socket.Receive(buffer);
-            if (bytesRead > 0)
+            try
             {
+                int bytesRead = socket.Receive(buffer);
                 string receivedMessage = Encoding.Unicode.GetString(buffer, 0, bytesRead).Trim();
 
                 lock (receivedMessages)
@@ -102,10 +112,23 @@ public class Client : MonoBehaviour
                     receivedMessages.Add(receivedMessage);
                 }
             }
-            else
+            catch (ThreadAbortException)
             {
-                // Connection closed by server
+                Thread.ResetAbort();
+                Array.Clear(buffer, 0, buffer.Length);
                 break;
+            }
+            catch (SocketException)
+            {
+                if (socket.Connected)
+                {
+                    UnityMainThreadDispatcher.Dispatcher.Enqueue(() => DisconnectFromServer());
+                }
+                break;
+            }
+            catch (Exception e)
+            {
+                Debug.Log(e); 
             }
         }
     }
@@ -113,14 +136,15 @@ public class Client : MonoBehaviour
     private void SendMessageToServer(string message)
     {
         // Method assumes client is already connected to server
-        byte[] sendBuffer = new byte[8192];
-        sendBuffer = Encoding.Unicode.GetBytes(message);
+        byte[] buffer = new byte[8192];
+        buffer = Encoding.Unicode.GetBytes(message);
 
-        client.BeginSend(new List<ArraySegment<byte>> { new ArraySegment<byte>(sendBuffer) }, SocketFlags.None,
+        client.BeginSend(new List<ArraySegment<byte>> { new ArraySegment<byte>(buffer) }, SocketFlags.None,
             (ar) =>
             {
                 int bytesSent = client.EndSend(ar);
-                Array.Clear(sendBuffer, 0, sendBuffer.Length);
+                Debug.Log(message);
+                Array.Clear(buffer, 0, buffer.Length);
             }
             , null);
     }
@@ -194,17 +218,6 @@ public class Client : MonoBehaviour
         client = SetupClient(ipAddress, port);
         StartCoroutine(ProcessReceivedServerData());
 
-        // Trick to find local IP address
-        // Connecting a UDP socket and reading it's local endpoint
-        string localIP;
-        using (Socket socket = new(AddressFamily.InterNetwork, SocketType.Dgram, 0))
-        {
-            socket.Connect("8.8.8.8", 65530);
-            IPEndPoint endPoint = socket.LocalEndPoint as IPEndPoint;
-            localIP = endPoint.Address.ToString();
-        }
-        //localIP = "127.0.0.1"; // remove later
-
         string messageToSend = $"connect;{localIP};{clientUsername}";
         // command identifier "connect", client's ip address, username
         if (password) { messageToSend += ";something"; } // TODO
@@ -214,6 +227,15 @@ public class Client : MonoBehaviour
         // Start the thread to receive data
         serverReceiveThread = new Thread(() => SocketReceiveThread(client));
         serverReceiveThread.Start();
+    }
+
+    public void DisconnectFromServer()
+    {
+        if (client.Connected) { SendMessageToServer($"disconnect;{localIP}"); }
+        StopCoroutine(ProcessReceivedServerData());
+        serverReceiveThread.Abort();
+        serverReceiveThread.Join();
+        client.Close();
     }
 
     private string GetResponse(string data)

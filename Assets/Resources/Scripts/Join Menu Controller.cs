@@ -126,7 +126,7 @@ public class JoinMenuController : MonoBehaviour
         GameObject playersObject = joinedServer.transform.Find("Players").gameObject;
         string notConnected = "Waiting for player...";
 
-        String[] playerOrder = new String[4];
+        String[] playerOrder = new string[4];
         playerOrder[0] = hostUsername;
 
         if (player1Username != notConnected && player2Username != notConnected)
@@ -156,6 +156,7 @@ public class JoinMenuController : MonoBehaviour
 
     public void DisconnectFromServer()
     {
-
+        joinedServer.SetActive(false);
+        client.DisconnectFromServer();
     }
 }
