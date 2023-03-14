@@ -7,6 +7,8 @@ using System.Net;
 using System.Net.Sockets;
 using TMPro;
 using System.Threading;
+using UnityEditor.PackageManager;
+using System.Linq;
 
 public class Server : MonoBehaviour
 {
@@ -16,8 +18,11 @@ public class Server : MonoBehaviour
     private Socket multicastServer;
     private Socket server;
     private Thread receiveThread;
+    private HostMenuController hostMenuController;
 
-    [SerializeField] List<Socket> connectedClients = new();
+    private List<(string, string)> connectedClients = new(); // IP address, username
+    private List<(Socket, string)> receivedMessages = new(); // Socket that sent message, message
+    private string[] connectedUsernames = new string[3];
     private readonly string multicastAddress = "239.255.42.99";
     private readonly ushort multicastPort = 15000;
     private readonly ushort defaultPort = 8888;
@@ -27,6 +32,7 @@ public class Server : MonoBehaviour
 
     void Start()
     {
+        hostMenuController = GetComponent<HostMenuController>();
         // Trick to find local IP address
         // Connecting a UDP socket and reading it's local endpoint
         using (Socket socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, 0))
@@ -39,10 +45,14 @@ public class Server : MonoBehaviour
 
         multicastServer = SetupMulticastSocket();
         server = SetupServer();
-        
-        InvokeRepeating(nameof(SendMessageToMulticastGroup), 0f, 3f);
-    }
 
+        StartCoroutine(SendMessageToMulticastGroup());
+        StartCoroutine(ProcessReceivedData());
+    }
+    private void Update()
+    {
+        connectedUsernames = hostMenuController.GetPlayersUsernames();
+    }
     private Socket SetupServer()
     {
         IPAddress ipAddress = IPAddress.Parse(localIP);
@@ -59,8 +69,7 @@ public class Server : MonoBehaviour
                 Socket listener = (Socket)ar.AsyncState;
                 Socket client = listener.EndAccept(ar);
 
-                connectedClients.Add(client);
-                Thread clientThread = new(() => { HandleClient(client); });
+                Thread clientThread = new(() => { SocketReceiveThread(client); });
                 clientThread.Start();
             }
         , server);
@@ -82,92 +91,153 @@ public class Server : MonoBehaviour
         return socket;
     }
 
-    public void SendMessageToMulticastGroup()
+    public IEnumerator SendMessageToMulticastGroup()
     {
-        byte[] buffer = new byte[1024];
-        string msg = string.Empty;
-
-        msg = $"{localIP};{defaultPort};{serverName};{numOfConnected};{passwordLocked}";
-        // Servers' own IP address, server name, number of already connected clients, password requirement
+        byte[] buffer = new byte[8192];
+        string msg = $"multicast;{localIP};{defaultPort};{serverName};{numOfConnected};{passwordLocked}";
+        // Command identifier, server's own IP address, server name, number of already connected clients, password requirement
         // Delimiter is ;
         buffer = Encoding.Unicode.GetBytes(msg);
 
-        multicastServer.BeginSend(new List<ArraySegment<byte>> { new ArraySegment<byte>(buffer) }, SocketFlags.None,
-            (ar) =>
-            {
-                int bytesSent = multicastServer.EndSend(ar);
-                //if (msg.Equals("Bye!", StringComparison.Ordinal))
-                //{
-                //    try
-                //    {
-                //        multicastServer.Shutdown(SocketShutdown.Both);
-                //    }
-                //    finally
-                //    {
-                //        multicastServer.Close();
-                //    }
-                //}
-            }
-            , null);
-    }
-
-    // Thread to continuously receive data
-    private void HandleClient(Socket client)
-    {
         while (true)
         {
-            try
+            multicastServer.BeginSend(new List<ArraySegment<byte>> { new ArraySegment<byte>(buffer) }, SocketFlags.None,
+                (ar) =>
+                {
+                    int bytesSent = multicastServer.EndSend(ar);
+                    //if (msg.Equals("Bye!", StringComparison.Ordinal))
+                    //{
+                    //    try
+                    //    {
+                    //        multicastServer.Shutdown(SocketShutdown.Both);
+                    //    }
+                    //    finally
+                    //    {
+                    //        multicastServer.Close();
+                    //    }
+                    //}
+                }
+                , null);
+            yield return new WaitForSeconds(1f);
+        }
+    }
+
+    // Thread to continuously receive data from a specific socket and write it to receivedMessages
+    private void SocketReceiveThread(Socket socket)
+    {
+        byte[] buffer = new byte[8192];
+        while (true)
+        {
+            int bytesRead = socket.Receive(buffer);
+            if (bytesRead > 0)
             {
-                byte[] buffer = new byte[1024];
-                int bytesRead = client.Receive(buffer, 0, buffer.Length, SocketFlags.None);
                 string receivedMessage = Encoding.Unicode.GetString(buffer, 0, bytesRead).Trim();
 
-                Array.Clear(buffer, 0, buffer.Length);
-
-                try
+                lock (receivedMessages)
                 {
-                    string[] message = receivedMessage.Split(";");
-
-                    string clientIP = message[0];
-                    string clientName = message[1];
-
-                    // Process message logic
-
-                    string messageToSend = "Verified";
-
-                    IPEndPoint remoteEndPoint = new(IPAddress.Parse(clientIP), defaultPort);
-
-                    buffer = Encoding.Unicode.GetBytes(messageToSend);
-                    int bytesSent = client.Send(buffer, 0, buffer.Length, SocketFlags.None);
-                }
-                catch (Exception e)
-                {
-                    Debug.Log(e); // Client likely disconnected
-                    if (receivedMessage == string.Empty) { client.Close(); break; }
+                    receivedMessages.Add((socket, receivedMessage));
                 }
             }
-            catch
+            else
             {
+                // Client rude disconnect
                 break;
             }
         }
     }
 
-    private string ProcessClientData(string data) // Incomplete, not in use yet
+    private void SendMessageToClient(Socket client ,string message)
     {
-        string[] dataArr = data.Split(";");
-        IPAddress address;
-        if (IPAddress.TryParse(dataArr[0], out address))
-        {
-            string clientName = dataArr[1];
+        byte[] sendBuffer = new byte[8192];
+        sendBuffer = Encoding.Unicode.GetBytes(message);
 
-            return "Verified";
-        }
-        else
+        client.BeginSend(new List<ArraySegment<byte>> { new ArraySegment<byte>(sendBuffer) }, SocketFlags.None,
+            (ar) =>
+            {
+                int bytesSent = client.EndSend(ar);
+                Array.Clear(sendBuffer, 0, sendBuffer.Length);
+            }
+            , null);
+    }
+
+    private IEnumerator ProcessReceivedData()
+    {
+        while (true)
         {
-            return "Rejected";
+            lock (receivedMessages)
+            {
+                foreach ((Socket sendingSocket ,string receivedMessage) in receivedMessages.ToList())
+                {
+                    try
+                    {
+                        string messageToSend = GetResponse(receivedMessage); // Message process
+
+                        if (messageToSend != string.Empty)
+                        {
+                            SendMessageToClient(sendingSocket ,messageToSend);
+                        }
+                    }
+                    catch (Exception e)
+                    {
+                        Debug.Log(e); // Client likely disconnected, we want to remove it from out list of connected clients
+                        if (receivedMessage == string.Empty) 
+                        {
+                            IPEndPoint remoteEndPoint = sendingSocket.RemoteEndPoint as IPEndPoint;
+                            if (remoteEndPoint != null) 
+                            {
+                                // The remoteEndPoint trick is used to find the IP address of the connected socket, so we can remove it from our list
+                                string clientIPAddress = remoteEndPoint.Address.ToString();
+                                // We iterate over the list, and search for the client with the ip address we found earlier
+                                // Once found, we use his username to remove it from our game view, and then remove him from our internal list
+                                foreach (var client in connectedClients)
+                                {
+                                    if (client.Item1 == clientIPAddress)
+                                    {
+                                        hostMenuController.DisconnectClient(client.Item2);
+                                        connectedClients.Remove(client);
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        sendingSocket.Close();
+                        break;
+                    }
+                }
+                receivedMessages.Clear();
+            }
+            yield return new WaitForSeconds(1f);
         }
     }
+
+    private string GetResponse(string data)
+    {
+        string[] parts = data.Split(';');
+        string command = parts[0];
+
+        switch (command)
+        {
+            case "connect":
+
+                string clientIP = parts[1];
+                string clientName = parts[2];
+                if (parts.Length > 3) { string password = parts[3]; }
+                // TODO: verify password
+
+                if (connectedClients.Count < 3)
+                {
+                    connectedClients.Add((clientIP, clientName));
+                    hostMenuController.ConnectNewClient(clientName);
+                    return $"ok;{connectedUsernames[0]};{connectedUsernames[1]};{connectedUsernames[2]}";
+                }
+                else { return "full"; }
+
+            default:
+                // Handle unknown commands
+                return "unknown";
+        }
+    }
+
     private void OnDisable()
     {
         CancelInvoke();

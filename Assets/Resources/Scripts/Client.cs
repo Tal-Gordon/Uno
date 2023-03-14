@@ -8,21 +8,22 @@ using System.Text;
 using System.Threading;
 using TMPro;
 using UnityEngine.SceneManagement;
+using System.Linq;
 
 public class Client : MonoBehaviour
 {
     public List<(string IpAddress, ushort port, string serverName, string numOfConnected, bool passReq)> serversInfo = new();
-    public string clientName;
+    public string clientUsername;
 
     private Socket multicastClient;
     private Socket client;
-    private List<string> clientReceivedMessages = new();
     private Thread multicastReceiveThread;
+    private Thread serverReceiveThread;
     private JoinMenuController joinMenuController;
 
+    private List<string> receivedMessages = new();
     private readonly string multicastAddress = "239.255.42.99";
     private readonly ushort multicastPort = 15000;
-    private readonly string terminationCommand = "Bye!";
 
     void Start()
     {
@@ -30,10 +31,10 @@ public class Client : MonoBehaviour
         multicastClient = SetupMulticastClient();
 
         // Start the thread to receive data
-        multicastReceiveThread = new Thread(() => ReceiveDataOnMulticast(multicastClient));
+        multicastReceiveThread = new Thread(() => SocketReceiveThread(multicastClient));
         multicastReceiveThread.Start();
-        InvokeRepeating(nameof(ProcessReceivedMulticastMessages), 0f, 0.1f);
-        // Maybe TODO: Add a refresh button that would trigger ProcessReceivedMulticastMessages instead of InvokeRepeating
+
+        StartCoroutine(ProcessReceivedMulticastData());
 
         joinMenuController = GetComponent<JoinMenuController>();
     }
@@ -69,14 +70,14 @@ public class Client : MonoBehaviour
             }
             else
             {
-                Debug.LogError("Connection timed out");
+                Debug.Log("Connection timed out");
                 client.Close();
                 return null;
             }
         }
         catch (Exception e)
         {
-            Debug.LogError(e);
+            Debug.Log(e);
             client.Close();
             return null;
         }
@@ -84,92 +85,96 @@ public class Client : MonoBehaviour
         return client;
     }
 
-    // Thread to continuously receive data on multicast group
-    private void ReceiveDataOnMulticast(Socket client)
+    // Thread to continuously receive data from a specific socket, be it multicast or direct
+    // Every received message is written to a list, so Unity's main thread can access and process it at it's convenience
+    private void SocketReceiveThread(Socket socket)
     {
+        byte[] buffer = new byte[8192];
         while (true)
         {
-            try
+            int bytesRead = socket.Receive(buffer);
+            if (bytesRead > 0)
             {
-                byte[] data = new byte[1024];
-                int bytesRead = client.Receive(data, 0, data.Length, SocketFlags.None);
-                string str = Encoding.Unicode.GetString(data, 0, bytesRead);
-                string receivedMessage = str.Trim();
-                lock (clientReceivedMessages)
+                string receivedMessage = Encoding.Unicode.GetString(buffer, 0, bytesRead).Trim();
+
+                lock (receivedMessages)
                 {
-                    clientReceivedMessages.Add(receivedMessage);
+                    receivedMessages.Add(receivedMessage);
                 }
             }
-            catch
+            else
             {
+                // Connection closed by server
                 break;
             }
         }
     }
 
-    // Continuously process received multicast data
-    private void ProcessReceivedMulticastMessages()
+    private void SendMessageToServer(string message)
     {
-        lock (clientReceivedMessages)
+        // Method assumes client is already connected to server
+        byte[] sendBuffer = new byte[8192];
+        sendBuffer = Encoding.Unicode.GetBytes(message);
+
+        client.BeginSend(new List<ArraySegment<byte>> { new ArraySegment<byte>(sendBuffer) }, SocketFlags.None,
+            (ar) =>
+            {
+                int bytesSent = client.EndSend(ar);
+                Array.Clear(sendBuffer, 0, sendBuffer.Length);
+            }
+            , null);
+    }
+
+    private void ProcessSocketReceivedData(Socket socket)
+    {
+        lock (receivedMessages)
         {
-            foreach (string receivedMessage in clientReceivedMessages)
+            foreach (string receivedMessage in receivedMessages.ToList())
             {
                 try
                 {
-                    string[] message = receivedMessage.Split(';');
+                    string messageToSend = GetResponse(receivedMessage); // Message process
 
-                    string serverIpAddress = message[0];
-                    ushort serverPort = ushort.Parse(message[1]);
-                    string serverName = message[2];
-                    string numOfConnected = message[3];
-                    bool passReq = bool.Parse(message[4]);
-
-                    bool serverExists = false;
-                    for (int i = 0; i < serversInfo.Count; i++)
+                    if (messageToSend != string.Empty)
                     {
-                        if (serversInfo[i].IpAddress == serverIpAddress) 
-                        { 
-                            serverExists = true; 
-                            if (serversInfo[i].port != serverPort) { serversInfo[i] = (serversInfo[i].IpAddress, serverPort, serversInfo[i].serverName, numOfConnected, serversInfo[i].passReq); }
-                            break;
-                        }
+                        SendMessageToServer(messageToSend);
                     }
-                    if (!serverExists) 
-                    { 
-                        serversInfo.Add((serverIpAddress, serverPort, serverName, numOfConnected, passReq)); 
-                        UpdateRenderedServers();
-                    }
-
-                    //List<string> tempServerNames = joinMenuController.GetServersNameList();
-                    //for (int i = 0; i < serversInfo.Count; i++)
-                    //{
-                    //    if (!tempServerNames.Contains(serversInfo[i].serverName))
-                    //    {
-                    //        serversInfo.RemoveAt(i);
-                    //    }
-                    //}
-                    // Remove rendered unavailable servers
                 }
                 catch (Exception e)
                 {
-                    Debug.LogError(e);
+                    Debug.Log(e); // Likely connection closed by server
+                    if (receivedMessage == string.Empty) { socket.Close(); break; }
                 }
-
-                //if (receivedMessage.Equals(terminationCommand, StringComparison.Ordinal))
-                //{
-                //    Debug.Log("termination command received");
-                //    client.Close();
-                //    receiveThread.Join();
-                //    CancelInvoke(nameof(ProcessReceivedMulticastMessages)); break;
-                //}
             }
-            clientReceivedMessages.Clear();
+            receivedMessages.Clear();
         }
     }
 
-    private void UpdateRenderedServers()
+    private IEnumerator ProcessReceivedMulticastData()
     {
-        joinMenuController.RerenderServers();
+        while (true)
+        {
+            yield return new WaitForSeconds(1f);
+
+            ProcessSocketReceivedData(multicastClient);
+
+            // TODO: stop function when connected to server, and restart if disconnected
+        }
+    }
+
+    private IEnumerator ProcessReceivedServerData()
+    {
+        while (true)
+        {
+            if (client != null)
+            {
+                if (client.Connected) { ProcessSocketReceivedData(client); }
+
+                yield return new WaitForSeconds(2f);
+
+                // TODO: stop function if disconnected from server, and restart when connected
+            }
+        }
     }
 
     public void AskToJoin(string serverName, bool password = false)
@@ -186,9 +191,8 @@ public class Client : MonoBehaviour
             }
         }
 
-        Socket client = SetupClient(ipAddress, port);
-
-        if (client == null) { return; }
+        client = SetupClient(ipAddress, port);
+        StartCoroutine(ProcessReceivedServerData());
 
         // Trick to find local IP address
         // Connecting a UDP socket and reading it's local endpoint
@@ -199,49 +203,82 @@ public class Client : MonoBehaviour
             IPEndPoint endPoint = socket.LocalEndPoint as IPEndPoint;
             localIP = endPoint.Address.ToString();
         }
-        //localIP = "127.0.0.1"; // Remove later
+        //localIP = "127.0.0.1"; // remove later
 
-        string messageToSend = $"{localIP};{clientName}";
+        string messageToSend = $"connect;{localIP};{clientUsername}";
+        // command identifier "connect", client's ip address, username
         if (password) { messageToSend += ";something"; } // TODO
 
-        byte[] buffer = new byte[1024];
-        buffer = Encoding.Unicode.GetBytes(messageToSend);
+        SendMessageToServer(messageToSend);
 
-        if (client.Connected)
+        // Start the thread to receive data
+        serverReceiveThread = new Thread(() => SocketReceiveThread(client));
+        serverReceiveThread.Start();
+    }
+
+    private string GetResponse(string data)
+    {
+        // Responsible for figuring out how to respond to server. if returns string.Empty, it means client won't respond 
+        string[] parts = data.Split(';');
+        string command = parts[0];
+
+        switch (command)
         {
-            client.BeginSend(new List<ArraySegment<byte>> { new ArraySegment<byte>(buffer) }, SocketFlags.None,
-                (ar) =>
+            case "ok":
+                string hostUsername = parts[1];
+                string player1Username = parts[2];
+                string player2Username = parts[3];
+
+                RenderJoinedServer(hostUsername, player1Username, player2Username);
+
+                return string.Empty;
+
+            case "multicast":
+                string serverIpAddress = parts[1];
+                ushort serverPort = ushort.Parse(parts[2]);
+                string serverName = parts[3];
+                string numOfConnected = parts[4];
+                bool passReq = bool.Parse(parts[5]);
+
+                bool serverExists = false;
+                for (int i = 0; i < serversInfo.Count; i++)
                 {
-                    int bytesSent = client.EndSend(ar);
-                    Array.Clear(buffer, 0, buffer.Length);
+                    if (serversInfo[i].IpAddress == serverIpAddress)
+                    {
+                        serverExists = true;
+                        if (serversInfo[i].port != serverPort) { serversInfo[i] = (serversInfo[i].IpAddress, serverPort, serversInfo[i].serverName, numOfConnected, serversInfo[i].passReq); }
+                        break;
+                    }
                 }
-                , null);
 
-            client.BeginReceive(buffer, 0, buffer.Length, SocketFlags.None, 
-                (ar) =>
+                if (!serverExists)
                 {
-                    try
-                    {
-                        int bytesRead = client.EndReceive(ar);
+                    serversInfo.Add((serverIpAddress, serverPort, serverName, numOfConnected, passReq));
+                    UpdateRenderedServers();
+                }
 
-                        string receivedString = Encoding.Unicode.GetString(buffer, 0, bytesRead);
+                //List<string> tempServerNames = joinMenuController.GetServersNameList();
+                //for (int i = 0; i < serversInfo.Count; i++)
+                //{
+                //    if (!tempServerNames.Contains(serversInfo[i].serverName))
+                //    {
+                //        serversInfo.RemoveAt(i);
+                //    }
+                //}
 
-                        Debug.Log($"Server sent: {receivedString}");
-                    }
-                    catch (Exception e)
-                    {
-                        Debug.LogError(e);
-                    }
-                }, null);
-        }
-        else
-        {
-            Debug.LogError("Client not connected");
+                // TODO: Remove rendered unavailable servers
+
+                return string.Empty;
+
+            default:
+                // Handle unknown commands
+                return "unknown";
         }
     }
 
-    public List<(string, string, bool)> GetServersInfo()
+    public List<(string, string, bool)> GetServersRenderInfo()
     {
+        // Returns info about servers required for render: server name, amount of connected players, password requirement
         List<(string, string, bool)> toReturn = new();
         for (int i = 0; i < serversInfo.Count; i++)
         {
@@ -249,8 +286,19 @@ public class Client : MonoBehaviour
         }
         return toReturn;
     }
+
+    public void RenderJoinedServer(string hostUsername, string player1Username, string player2Username)
+    {
+        joinMenuController.RenderJoinedServer(hostUsername, player1Username, player2Username, clientUsername);
+    }
     private void OnDisable()
     {
         if (client != null) { CancelInvoke(); client.Close(); }
     }
+
+    private void UpdateRenderedServers()
+    {
+        joinMenuController.RerenderServers();
+    }
+
 }

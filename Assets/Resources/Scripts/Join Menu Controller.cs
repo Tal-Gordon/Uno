@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using TMPro;
 using UnityEngine.UI;
+using System;
 
 public class JoinMenuController : MonoBehaviour
 {
@@ -11,13 +12,16 @@ public class JoinMenuController : MonoBehaviour
     public List<GameObject> servers = new();
 
     private GameObject serversObject;
+    private GameObject joinedServer;
     private Client client;
 
     private readonly string serversPrefabPath = "Prefabs/Server";
     private readonly string serversObjectName = "Servers";
+    private readonly string joinedServerName = "Joined server";
     void Start()
     {
         serversObject = transform.Find(serversObjectName).GetChild(0).GetChild(0).gameObject;
+        joinedServer = transform.Find(joinedServerName).gameObject;
         client = GetComponent<Client>();
 
         UpdateServersList();
@@ -108,11 +112,50 @@ public class JoinMenuController : MonoBehaviour
             Destroy(serversObject.transform.GetChild(i).gameObject); // We clean the playground so we can play again
         }
 
-        List<(string, string, bool)> newServers = client.GetServersInfo();
+        List<(string, string, bool)> newServers = client.GetServersRenderInfo();
         for (int i = 0; i < newServers.Count; i++)
         {
             RenderServer(newServers[i].Item1, newServers[i].Item2, newServers[i].Item3);
         }
         UpdateServersList();
+    }
+
+    public void RenderJoinedServer(string hostUsername, string player1Username, string player2Username, string clientUsername)
+    {
+        joinedServer.SetActive(true);
+        GameObject playersObject = joinedServer.transform.Find("Players").gameObject;
+        string notConnected = "Waiting for player...";
+
+        String[] playerOrder = new String[4];
+        playerOrder[0] = hostUsername;
+
+        if (player1Username != notConnected && player2Username != notConnected)
+        {
+            playerOrder[1] = player1Username;
+            playerOrder[2] = player2Username;
+            playerOrder[3] = clientUsername;
+        }
+        else if (player1Username != notConnected && player2Username == notConnected)
+        {
+            playerOrder[1] = player1Username;
+            playerOrder[2] = clientUsername;
+            playerOrder[3] = notConnected;
+        }
+        else
+        {
+            playerOrder[1] = clientUsername;
+            playerOrder[2] = notConnected;
+            playerOrder[3] = notConnected;
+        }
+
+        for (int i = 0; i < playersObject.transform.childCount; i++)
+        {
+            playersObject.transform.GetChild(i).GetChild(0).GetComponent<TextMeshProUGUI>().text = playerOrder[i];
+        }
+    }
+
+    public void DisconnectFromServer()
+    {
+
     }
 }

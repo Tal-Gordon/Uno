@@ -30,6 +30,8 @@ public class MainMenu : MonoBehaviour
         greenButton.alphaHitTestMinimumThreshold = 1;
         hostButton.alphaHitTestMinimumThreshold = 1;
         joinButton.alphaHitTestMinimumThreshold = 1;
+
+        Application.targetFrameRate = 60;
     }
     public void Singleplayer() 
     {
