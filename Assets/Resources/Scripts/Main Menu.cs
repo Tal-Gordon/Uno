@@ -3,12 +3,14 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
+using TMPro;
 
 public class MainMenu : MonoBehaviour
 {
     public GameObject connectionMenu;
     public GameObject hostMenu;
     public GameObject joinMenu;
+    public GameObject ServerCreationMenu;
 
     public Image MainMenuCardColor;
     public Image redButton;
@@ -62,9 +64,11 @@ public class MainMenu : MonoBehaviour
     }
     public void Host()
     {
-        hostMenu.SetActive(true);
+        GameObject button = UnityEngine.EventSystems.EventSystem.current.currentSelectedGameObject;
+        GameObject instantiatedMenu = Instantiate(ServerCreationMenu, button.transform.parent);
+        instantiatedMenu.transform.GetChild(2).GetComponent<Button>().onClick.AddListener(ServerCreationCreate);
+        instantiatedMenu.transform.GetChild(3).GetComponent<Button>().onClick.AddListener(ServerCreationCancel);
     }
-
     public void CloseButton()
     {
         GameObject button = UnityEngine.EventSystems.EventSystem.current.currentSelectedGameObject;
@@ -74,5 +78,23 @@ public class MainMenu : MonoBehaviour
     {
         CloseButton();
         MainMenuCardColor.color = new Color32(0, 0, 0, 255); //Black
+    }
+    public void ServerCreationCreate()
+    {
+        GameObject button = UnityEngine.EventSystems.EventSystem.current.currentSelectedGameObject;
+        hostMenu.GetComponent<Server>().serverName = button.transform.parent.GetChild(0).GetComponent<TMP_InputField>().text;
+        if (button.transform.parent.GetChild(1).GetComponent<TMP_InputField>().text != string.Empty)
+        {
+            hostMenu.GetComponent<Server>().passwordLocked = true;
+            hostMenu.GetComponent<Server>().serverPassword = button.transform.parent.GetChild(1).GetComponent<TMP_InputField>().text;
+        }
+        // More stuff to set
+        hostMenu.SetActive(true);
+        ServerCreationCancel();
+    }
+    public void ServerCreationCancel()
+    {
+        GameObject button = UnityEngine.EventSystems.EventSystem.current.currentSelectedGameObject;
+        Destroy(button.transform.parent.gameObject);
     }
 }

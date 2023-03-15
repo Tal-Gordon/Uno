@@ -15,13 +15,14 @@ public class HostMenuController : MonoBehaviour
     private readonly string playersGameObjectName = "Players";
     void Start()
     {
+        server = GetComponent<Server>();
+
         GameObject playersGameObject = transform.Find(playersGameObjectName).gameObject;
         for (int i = 0; i < playersObjects.Length; i++)
         {
             playersObjects[i] = playersGameObject.transform.GetChild(i).gameObject;
+            if (i == 0) { playersObjects[i].transform.GetChild(0).GetComponent<TextMeshProUGUI>().text = Profile.username; }
         }
-
-        server = GetComponent<Server>();
     }
 
     public void ConnectNewClient(string username)

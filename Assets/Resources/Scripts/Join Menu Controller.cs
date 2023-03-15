@@ -30,7 +30,7 @@ public class JoinMenuController : MonoBehaviour
     void Update()
     {
         console.text = "empty";
-        foreach (var (_, _, serverName, _, _) in client.serversInfo) { console.text = serverName; }
+        foreach (var (_, _, serverName, _, _, _) in client.serversInfo) { console.text = serverName; }
     }
 
     private (int, bool) GetServerInformationByName(string serverName)
@@ -95,7 +95,6 @@ public class JoinMenuController : MonoBehaviour
 
         GameObject instantiatedServer = Instantiate(server, serversObject.transform);
         instantiatedServer.GetComponent<Button>().onClick.AddListener(AskToJoinServer);
-
     }
 
     void AskToJoinServer()

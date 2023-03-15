@@ -7,28 +7,27 @@ using System.Net;
 using System.Net.Sockets;
 using TMPro;
 using System.Threading;
-using UnityEditor.PackageManager;
 using System.Linq;
 
 public class Server : MonoBehaviour
 {
     public string serverName;
     public bool passwordLocked;
+    public string serverPassword;
 
     private Socket multicastServer;
     private Socket server;
-    private Thread receiveThread;
     private HostMenuController hostMenuController;
 
-    private List<(string, string)> connectedClients = new(); // IP address, username
+    private List<(Socket, string)> connectedClients = new(); // socket, username
     private List<(Socket, string)> receivedMessages = new(); // Socket that sent message, message
     private string[] connectedUsernames = new string[3];
     private readonly string multicastAddress = "239.255.42.99";
     private readonly ushort multicastPort = 15000;
     private readonly ushort defaultPort = 8888;
     private ushort userPort;
-    private int numOfConnected = 1;
     private string localIP;
+    private bool disabledOnce = false;
 
     void Start()
     {
@@ -41,7 +40,6 @@ public class Server : MonoBehaviour
             IPEndPoint endPoint = socket.LocalEndPoint as IPEndPoint;
             localIP = endPoint.Address.ToString();
         }
-        localIP = "127.0.0.1"; // Remove later
 
         multicastServer = SetupMulticastSocket();
         server = SetupServer();
@@ -99,7 +97,7 @@ public class Server : MonoBehaviour
     public IEnumerator SendMessageToMulticastGroup()
     {
         byte[] buffer = new byte[8192];
-        string msg = $"multicast;{localIP};{defaultPort};{serverName};{numOfConnected};{passwordLocked}";
+        string msg = $"multicast;{localIP};{defaultPort};{serverName};{connectedClients.Count};{passwordLocked}";
         // Command identifier, server's own IP address, server name, number of already connected clients, password requirement
         // Delimiter is ;
         buffer = Encoding.Unicode.GetBytes(msg);
@@ -162,7 +160,7 @@ public class Server : MonoBehaviour
             }
             catch (Exception e)
             {
-                Debug.Log(e);
+                Debug.LogError(e);
             }
         }
     }
@@ -192,7 +190,7 @@ public class Server : MonoBehaviour
                     try
                     {
 
-                        string messageToSend = GetResponse(receivedMessage); // Message process
+                        string messageToSend = GetResponse(sendingSocket, receivedMessage); // Message process
 
                         if (messageToSend != string.Empty && sendingSocket.Connected)
                         {
@@ -201,7 +199,7 @@ public class Server : MonoBehaviour
                     }
                     catch (Exception e)
                     {
-                        Debug.Log(e); // Client likely disconnected
+                        Debug.LogError(e); // Client likely disconnected
                     }
                 }
                 receivedMessages.Clear();
@@ -210,7 +208,7 @@ public class Server : MonoBehaviour
         }
     }
 
-    private string GetResponse(string data)
+    private string GetResponse(Socket socket, string data)
     {
         string[] parts = data.Split(';');
         string command = parts[0];
@@ -226,7 +224,7 @@ public class Server : MonoBehaviour
 
                 if (connectedClients.Count < 3)
                 {
-                    connectedClients.Add((clientIP, clientName));
+                    connectedClients.Add((socket, clientName));
                     hostMenuController.ConnectNewClient(clientName);
                     return $"ok;{connectedUsernames[0]};{connectedUsernames[1]};{connectedUsernames[2]}";
                 }
@@ -234,8 +232,7 @@ public class Server : MonoBehaviour
             }
             case "disconnect":
             {
-                string clientIP = parts[1];
-                DisconnectClient(clientIP);
+                DisconnectClient(socket);
                 return string.Empty;
             }
             default:
@@ -248,30 +245,9 @@ public class Server : MonoBehaviour
 
     private void DisconnectClient(Socket client)
     {
-        IPEndPoint remoteEndPoint = client.RemoteEndPoint as IPEndPoint;
-        if (remoteEndPoint != null)
+        foreach ((Socket clientSocket, string username) clientObject in connectedClients)
         {
-            // The remoteEndPoint trick is used to find the IP address of the connected socket, so we can remove it from our list
-            string clientIPAddress = remoteEndPoint.Address.ToString();
-            // We iterate over the list, and search for the client with the ip address we found earlier
-            // Once found, we use his username to remove it from our game view, and then remove him from our internal list
-            foreach ((string ip, string username) clientObject in connectedClients)
-            {
-                if (clientObject.ip == clientIPAddress)
-                {
-                    hostMenuController.DisconnectClient(clientObject.username);
-                    connectedClients.Remove(clientObject);
-                    break;
-                }
-            }
-        }
-    }
-
-    private void DisconnectClient(string IPAddress)
-    {
-        foreach ((string ip, string username) clientObject in connectedClients)
-        {
-            if (clientObject.ip == IPAddress)
+            if (clientObject.clientSocket == client)
             {
                 hostMenuController.DisconnectClient(clientObject.username);
                 connectedClients.Remove(clientObject);
@@ -282,8 +258,18 @@ public class Server : MonoBehaviour
 
     private void OnDisable()
     {
-        CancelInvoke();
+        StopAllCoroutines();
+        for (int i = 0; i < connectedClients.Count; i++)
+        {
+            SendMessageToClient(connectedClients[i].Item1, "disconnect");
+        }
         multicastServer.Close();
         server.Close();
+        disabledOnce = true;
+    }
+
+    private void OnEnable()
+    {
+        if (disabledOnce) { Start(); }
     }
 }
