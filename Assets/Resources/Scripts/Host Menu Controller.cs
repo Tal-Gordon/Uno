@@ -10,12 +10,12 @@ public class HostMenuController : MonoBehaviour
     public GameObject[] playersObjects = new GameObject[4];
 
     private Server server;
-    private GameObject clientsObject;
 
     private readonly string playersGameObjectName = "Players";
     void Start()
     {
-        server = GetComponent<Server>();
+        server = Server.Instance;
+        server.ManualStart();
 
         GameObject playersGameObject = transform.Find(playersGameObjectName).gameObject;
         for (int i = 0; i < playersObjects.Length; i++)
@@ -59,5 +59,16 @@ public class HostMenuController : MonoBehaviour
             toReturn[i] = playersObjects[i].transform.GetChild(0).GetComponent<TextMeshProUGUI>().text;
         }
         return toReturn;
+    }
+
+    public void CloseServer()
+    {
+        server.CloseServer();
+        gameObject.SetActive(false);
+    }
+
+    public void StartGame()
+    {
+        server.StartGame();
     }
 }

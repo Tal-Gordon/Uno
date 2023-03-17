@@ -18,11 +18,13 @@ public class JoinMenuController : MonoBehaviour
     private readonly string serversPrefabPath = "Prefabs/Server";
     private readonly string serversObjectName = "Servers";
     private readonly string joinedServerName = "Joined server";
+
     void Start()
     {
-        serversObject = transform.Find(serversObjectName).GetChild(0).GetChild(0).gameObject;
+        serversObject = transform.Find(serversObjectName).GetChild(0).GetChild(0).gameObject; // Points to the location of the rendered servers gameobjects
         joinedServer = transform.Find(joinedServerName).gameObject;
-        client = GetComponent<Client>();
+        client = Client.Instance;
+        client.ManualStart();
 
         UpdateServersList();
     }
@@ -119,33 +121,37 @@ public class JoinMenuController : MonoBehaviour
         UpdateServersList();
     }
 
-    public void RenderJoinedServer(string hostUsername, string player1Username, string player2Username, string clientUsername)
+    public void RenderJoinedServer(string hostUsername, string player1Username, string player2Username, string player3Username)
     {
-        joinedServer.SetActive(true);
+        if (!joinedServer.activeSelf) { joinedServer.SetActive(true); }
         GameObject playersObject = joinedServer.transform.Find("Players").gameObject;
-        string notConnected = "Waiting for player...";
+        //string notConnected = "Waiting for player...";
 
         String[] playerOrder = new string[4];
         playerOrder[0] = hostUsername;
 
-        if (player1Username != notConnected && player2Username != notConnected)
-        {
-            playerOrder[1] = player1Username;
-            playerOrder[2] = player2Username;
-            playerOrder[3] = clientUsername;
-        }
-        else if (player1Username != notConnected && player2Username == notConnected)
-        {
-            playerOrder[1] = player1Username;
-            playerOrder[2] = clientUsername;
-            playerOrder[3] = notConnected;
-        }
-        else
-        {
-            playerOrder[1] = clientUsername;
-            playerOrder[2] = notConnected;
-            playerOrder[3] = notConnected;
-        }
+        //if (player1Username != notConnected && player2Username != notConnected)
+        //{
+        //    playerOrder[1] = player1Username;
+        //    playerOrder[2] = player2Username;
+        //    playerOrder[3] = clientUsername;
+        //}
+        //else if (player1Username != notConnected && player2Username == notConnected)
+        //{
+        //    playerOrder[1] = player1Username;
+        //    playerOrder[2] = clientUsername;
+        //    playerOrder[3] = notConnected;
+        //}
+        //else
+        //{
+        //    playerOrder[1] = clientUsername;
+        //    playerOrder[2] = notConnected;
+        //    playerOrder[3] = notConnected;
+        //}
+        playerOrder[0] = hostUsername;
+        playerOrder[1] = player1Username;
+        playerOrder[2] = player2Username;
+        playerOrder[3] = player3Username;
 
         for (int i = 0; i < playersObject.transform.childCount; i++)
         {
@@ -157,5 +163,11 @@ public class JoinMenuController : MonoBehaviour
     {
         joinedServer.SetActive(false);
         client.DisconnectFromServer();
+    }
+
+    public void LeaveClientele()
+    {
+        gameObject.SetActive(false);
+        client.CloseClient();
     }
 }

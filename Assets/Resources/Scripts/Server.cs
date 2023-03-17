@@ -1,37 +1,51 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 using System;
 using System.Text;
 using System.Net;
 using System.Net.Sockets;
-using TMPro;
 using System.Threading;
 using System.Linq;
 
 public class Server : MonoBehaviour
 {
+    public static Server Instance;
+    public HostMenuController hostMenuController;
+
     public string serverName;
     public bool passwordLocked;
     public string serverPassword;
 
     private Socket multicastServer;
     private Socket server;
-    private HostMenuController hostMenuController;
 
     private List<(Socket, string)> connectedClients = new(); // socket, username
     private List<(Socket, string)> receivedMessages = new(); // Socket that sent message, message
     private string[] connectedUsernames = new string[3];
     private readonly string multicastAddress = "239.255.42.99";
     private readonly ushort multicastPort = 15000;
-    private readonly ushort defaultPort = 8888;
+    private readonly ushort defaultPort = 11111;
     private ushort userPort;
     private string localIP;
-    private bool disabledOnce = false;
+    private void Awake()
+    {
+        if (Instance != null)
+        {
+            Destroy(gameObject);
+            return;
+        }
 
+        Instance = this;
+        DontDestroyOnLoad(gameObject);
+    }
     void Start()
     {
-        hostMenuController = GetComponent<HostMenuController>();
+        
+    }
+    public void ManualStart()
+    {
         // Trick to find local IP address
         // Connecting a UDP socket and reading it's local endpoint
         using (Socket socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, 0))
@@ -47,10 +61,6 @@ public class Server : MonoBehaviour
 
         StartCoroutine(SendMessageToMulticastGroup());
         StartCoroutine(ProcessReceivedData());
-    }
-    private void Update()
-    {
-        connectedUsernames = hostMenuController.GetPlayersUsernames();
     }
     private Socket SetupServer()
     {
@@ -97,7 +107,7 @@ public class Server : MonoBehaviour
     public IEnumerator SendMessageToMulticastGroup()
     {
         byte[] buffer = new byte[8192];
-        string msg = $"multicast;{localIP};{defaultPort};{serverName};{connectedClients.Count};{passwordLocked}";
+        string msg = $"multicast;{localIP};{defaultPort};{serverName};{connectedClients.Count + 1};{passwordLocked}";
         // Command identifier, server's own IP address, server name, number of already connected clients, password requirement
         // Delimiter is ;
         buffer = Encoding.Unicode.GetBytes(msg);
@@ -217,16 +227,16 @@ public class Server : MonoBehaviour
         {
             case "connect":
             {
-                string clientIP = parts[1];
-                string clientName = parts[2];
-                if (parts.Length > 3) { string password = parts[3]; }
+                string clientName = parts[1];
+                if (parts.Length > 3) { string password = parts[2]; }
                 // TODO: verify password
 
                 if (connectedClients.Count < 3)
                 {
                     connectedClients.Add((socket, clientName));
                     hostMenuController.ConnectNewClient(clientName);
-                    return $"ok;{connectedUsernames[0]};{connectedUsernames[1]};{connectedUsernames[2]}";
+                    connectedUsernames = hostMenuController.GetPlayersUsernames();
+                    return $"ok;{connectedUsernames[0]};{connectedUsernames[1]};{connectedUsernames[2]};{connectedUsernames[3]}";
                 }
                 else { return "full"; }
             }
@@ -238,25 +248,37 @@ public class Server : MonoBehaviour
             default:
             {
                 // Handle unknown commands
-                return "unknown";
+                Debug.LogError($"Client {socket} sent unknown command: {command}");
+                return string.Empty;
             }
+        }
+    }
+
+    private void InformClients(string message)
+    {
+        for (int i = 0; i < connectedClients.Count; i++)
+        {
+            SendMessageToClient(connectedClients[i].Item1, message);
         }
     }
 
     private void DisconnectClient(Socket client)
     {
-        foreach ((Socket clientSocket, string username) clientObject in connectedClients)
+        for (int i = 0; i < connectedClients.Count; i++)
         {
-            if (clientObject.clientSocket == client)
+            if (connectedClients[i].Item1 == client)
             {
-                hostMenuController.DisconnectClient(clientObject.username);
-                connectedClients.Remove(clientObject);
+                hostMenuController.DisconnectClient(connectedClients[i].Item2);
+                connectedClients.Remove(connectedClients[i]);
+
+                connectedUsernames = hostMenuController.GetPlayersUsernames();
+                InformClients($"userleft;{connectedUsernames[0]};{connectedUsernames[1]};{connectedUsernames[2]};{connectedUsernames[3]}");
                 break;
             }
         }
     }
 
-    private void OnDisable()
+    public void CloseServer()
     {
         StopAllCoroutines();
         for (int i = 0; i < connectedClients.Count; i++)
@@ -265,11 +287,11 @@ public class Server : MonoBehaviour
         }
         multicastServer.Close();
         server.Close();
-        disabledOnce = true;
     }
 
-    private void OnEnable()
+    public void StartGame()
     {
-        if (disabledOnce) { Start(); }
+        InformClients("gamestart");
+        SceneManager.LoadScene("Game");
     }
 }

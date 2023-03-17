@@ -23,30 +23,24 @@ public class Card : MonoBehaviour
 
     private SpriteRenderer cardSprite;
     private BoxCollider2D boxCollider;
-    private GameController gameController;
     private static Sprite[] cardSpriteSheet;
-    private Player owner;
 
     private float ZRotation = 0f;
-    private bool potentialToPlay;
-    private readonly string gameControllerName = "Board";
 
     void Start()
     {
         boxCollider = GetComponent<BoxCollider2D>();
         cardSprite = GetComponent<SpriteRenderer>();
-        boxCollider.size = new Vector2(cardSprite.size.x, cardSprite.size.y);
-        boxCollider.offset = new Vector2(Mathf.Abs(transform.position.x), 0);
 
-        gameController = GameObject.Find(gameControllerName).GetComponent<GameController>();
+        boxCollider.size = new Vector2(cardSprite.size.x, cardSprite.size.y);
+        boxCollider.offset = new Vector2(cardSprite.size.x/2, 0);
+
         cardSpriteSheet = Resources.LoadAll<Sprite>("Graphics/Cards");
 
         if (transform.parent.name == "Cards")
         {
-            potentialToPlay = true;
-            owner = transform.parent.parent.GetComponent<Player>();
 
-            switch (int.Parse(transform.parent.parent.name.Split(' ').Last()))
+            switch (int.Parse(transform.parent.parent.name.Split(' ').Last())) // We get the index of the player, i.e 1 of "player 1"
             {
                 case 2:
                     ZRotation = -90f;
@@ -64,6 +58,8 @@ public class Card : MonoBehaviour
         UpdateTexture();
 
         /*
+            Texture convention - corresponds to cards sprite sheet
+
             1 - wild
             6 - wild draw 4
             12-24 - yellows - numbers; draw 2; skip; reverse
@@ -130,20 +126,13 @@ public class Card : MonoBehaviour
         }
     }
 
-    private void OnMouseDown()
-    {
-        if (potentialToPlay && owner.GetCanPlay() && canPlay)
-        {
-            PlayCard();
-        }
-    }
-
-    void PlayCard()
-    {
-        gameController.SetTopCard(this);
-        owner.FinishTurn(gameObject.GetComponent<Card>());
-        //Destroy(gameObject);
-    }
+    //private void OnMouseDown()
+    //{
+    //    if (potentialToPlay && owner.GetCanPlay() && canPlay)
+    //    {
+    //        PlayCard();
+    //    }
+    //}
 
     public void UpdateTexture()
     {
@@ -151,24 +140,26 @@ public class Card : MonoBehaviour
         switch (color)
         {
             case CardColor.Red:
-                spritePathNum = 24 + number; break;
+            { spritePathNum = 24 + number; break; }
             case CardColor.Green:
-                spritePathNum = 50 + number; break;
+            { spritePathNum = 50 + number; break; }
             case CardColor.Yellow:
-                spritePathNum = 11 + number; break;
+            { spritePathNum = 11 + number; break; }
             case CardColor.Blue:
-                spritePathNum = 37 + number; break;
+            { spritePathNum = 37 + number; break; }
             case CardColor.Wild:
+            {
                 switch (number)
                 {
                     case 14:
-                        spritePathNum = 1; break;
+                    { spritePathNum = 1; break; }
                     case 15:
-                        spritePathNum = 6; break;
+                    { spritePathNum = 6; break; }
                     default:
-                        spritePathNum = 0; break;
+                    { spritePathNum = 0; break; }
                 }
                 break;
+            }
         }
         cardSprite.sprite = cardSpriteSheet[spritePathNum];
     }

@@ -1,31 +1,42 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 using System.Net.Sockets;
 using System.Net;
 using System;
 using System.Text;
 using System.Threading;
-using TMPro;
-using UnityEngine.SceneManagement;
 using System.Linq;
 
 public class Client : MonoBehaviour
 {
+    public static Client Instance;
+    public JoinMenuController joinMenuController;
+
     public List<(string IpAddress, ushort port, string serverName, string numOfConnected, bool passReq, bool isAlive)> serversInfo = new();
 
     private Socket multicastClient;
     private Socket client;
     private Thread multicastReceiveThread;
     private Thread serverReceiveThread;
-    private JoinMenuController joinMenuController;
 
     private List<string> receivedMessages = new();
-    private string localIP;
     private readonly string multicastAddress = "239.255.42.99";
     private readonly ushort multicastPort = 15000;
 
-    void Start()
+    private void Awake()
+    {
+        if (Instance != null)
+        {
+            Destroy(gameObject);
+            return;
+        }
+
+        Instance = this;
+        DontDestroyOnLoad(gameObject);
+    }
+    public void ManualStart()
     {
         // Set up the client socket
         multicastClient = SetupMulticastClient();
@@ -34,22 +45,10 @@ public class Client : MonoBehaviour
         multicastReceiveThread = new Thread(() => SocketReceiveThread(multicastClient));
         multicastReceiveThread.Start();
 
-        joinMenuController = GetComponent<JoinMenuController>();
-
         StartCoroutine(ProcessReceivedMulticastData());
         StartCoroutine(ProcessReceivedServerData());
         StartCoroutine(CheckAliveServers());
-
-        // Trick to find local IP address
-        // Connecting a UDP socket and reading it's local endpoint
-        using (Socket socket = new(AddressFamily.InterNetwork, SocketType.Dgram, 0))
-        {
-            socket.Connect("8.8.8.8", 65530);
-            IPEndPoint endPoint = socket.LocalEndPoint as IPEndPoint;
-            localIP = endPoint.Address.ToString();
-        }
     }
-
     private Socket SetupMulticastClient()
     {
         Socket socket = new(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
@@ -64,13 +63,13 @@ public class Client : MonoBehaviour
     private Socket SetupClient(string ipAddress, ushort port)
     {
         IPAddress ipAddressToConnect = IPAddress.Parse(ipAddress);
-        IPEndPoint localEndPoint = new(ipAddressToConnect, port);
+        IPEndPoint remoteEndPoint = new(ipAddressToConnect, port);
 
         Socket client = new(ipAddressToConnect.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
 
         try
         {
-            var connectResult = client.BeginConnect(localEndPoint, null, null);
+            var connectResult = client.BeginConnect(remoteEndPoint, null, null);
 
             // Wait for the connection to complete asynchronously
             bool isConnected = connectResult.AsyncWaitHandle.WaitOne(TimeSpan.FromSeconds(5), true);
@@ -129,7 +128,7 @@ public class Client : MonoBehaviour
             }
             catch (Exception e)
             {
-                Debug.LogError(e); 
+                Debug.LogError(e);
             }
         }
     }
@@ -205,7 +204,7 @@ public class Client : MonoBehaviour
 
         for (int i = 0; i < serversInfo.Count; i++)
         {
-            if (serversInfo[i].serverName == serverName) 
+            if (serversInfo[i].serverName == serverName)
             {
                 ipAddress = serversInfo[i].IpAddress;
                 port = serversInfo[i].port;
@@ -214,13 +213,13 @@ public class Client : MonoBehaviour
 
         client = SetupClient(ipAddress, port);
 
-        string messageToSend = $"connect;{localIP};{Profile.username}";
-        // command identifier "connect", client's ip address, username
+        string messageToSend = $"connect;{Profile.username}";
+        // command identifier "connect", username
         if (password) { messageToSend += ";something"; } // TODO
 
-        if (client != null) 
-        { 
-            SendMessageToServer(messageToSend); 
+        if (client != null)
+        {
+            SendMessageToServer(messageToSend);
 
             // Start the thread to receive data
             serverReceiveThread = new Thread(() => SocketReceiveThread(client));
@@ -249,8 +248,9 @@ public class Client : MonoBehaviour
                 string hostUsername = parts[1];
                 string player1Username = parts[2];
                 string player2Username = parts[3];
+                string player3Username = parts[4];
 
-                RenderJoinedServer(hostUsername, player1Username, player2Username);
+                RenderJoinedServer(hostUsername, player1Username, player2Username, player3Username);
 
                 return string.Empty;
             }
@@ -270,32 +270,22 @@ public class Client : MonoBehaviour
                         if (serversInfo[i].IpAddress == serverIpAddress) // We find the server that sent the multicast in our list
                         {
                             serverExists = true;
-                            if (serversInfo[i].port != serverPort) // Update the port, if needed
-                            {
-                                serversInfo[i] = (serversInfo[i].IpAddress, serverPort, serversInfo[i].serverName, numOfConnected, serversInfo[i].passReq, serversInfo[i].isAlive);
-                            }
+                            //if (serversInfo[i].port != serverPort) // Update the port, if needed
+                            //{
+                            //    serversInfo[i] = (serversInfo[i].IpAddress, serverPort, serversInfo[i].serverName, numOfConnected, serversInfo[i].passReq, serversInfo[i].isAlive);
+                            //}
+
                             // Set isAlive property as true
                             serversInfo[i] = (serversInfo[i].IpAddress, serversInfo[i].port, serversInfo[i].serverName, numOfConnected, serversInfo[i].passReq, true);
                         }
                     }
 
-                    if (!serverExists)
+                    if (!serverExists) // If the server doesn't exist in the list, it means it's new
                     {
                         serversInfo.Add((serverIpAddress, serverPort, serverName, numOfConnected, passReq, true));
                         UpdateRenderedServers();
-                    } 
+                    }
                 }
-
-                //List<string> tempServerNames = joinMenuController.GetServersNameList();
-                //for (int i = 0; i < serversInfo.Count; i++)
-                //{
-                //    if (!tempServerNames.Contains(serversInfo[i].serverName))
-                //    {
-                //        serversInfo.RemoveAt(i);
-                //    }
-                //}
-
-                // TODO: Remove rendered unavailable servers
 
                 return string.Empty;
             }
@@ -306,10 +296,31 @@ public class Client : MonoBehaviour
 
                 return string.Empty;
             }
+            case "userleft":
+            {
+                //string leftUsername = parts[1];
+                //joinMenuController.RemoveUser(leftUsername);
+
+                //return string.Empty;
+                string hostUsername = parts[1];
+                string player1Username = parts[2];
+                string player2Username = parts[3];
+                string player3Username = parts[4];
+
+                RenderJoinedServer(hostUsername, player1Username, player2Username, player3Username);
+
+                return string.Empty;
+            }
+            case "gamestart":
+            {
+                PrepareForGame();
+                return string.Empty;
+            }
             default:
             {
                 // Handle unknown commands
-                return "unknown";
+                Debug.LogError($"Server sent unknown command: {command}");
+                return string.Empty;
             }
         }
     }
@@ -349,17 +360,26 @@ public class Client : MonoBehaviour
         return toReturn;
     }
 
-    public void RenderJoinedServer(string hostUsername, string player1Username, string player2Username)
+    public void RenderJoinedServer(string hostUsername, string player1Username, string player2Username, string player3Username)
     {
-        joinMenuController.RenderJoinedServer(hostUsername, player1Username, player2Username, Profile.username);
+        joinMenuController.RenderJoinedServer(hostUsername, player1Username, player2Username, player3Username);
     }
-    private void OnDisable()
+    public void CloseClient()
     {
-        if (client != null) { CancelInvoke(); client.Close(); }
+        if (client != null)
+        {
+            StopAllCoroutines();
+            client.Close();
+        }
     }
 
     private void UpdateRenderedServers()
     {
         joinMenuController.RerenderServers();
+    }
+
+    private void PrepareForGame()
+    {
+        SceneManager.LoadScene("Game");
     }
 }
