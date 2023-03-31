@@ -20,12 +20,11 @@ public class Card : MonoBehaviour
     [SerializeField] CardColor color;
 
     public bool canPlay;
+    public bool handCard; // Some objects in my scene have this script but aren't meant to be played. This bool is meant to mark the cards in the players' hands, those that are playable
 
     private SpriteRenderer cardSprite;
     private BoxCollider2D boxCollider;
     private static Sprite[] cardSpriteSheet;
-
-    private float ZRotation = 0f;
 
     void Start()
     {
@@ -37,23 +36,22 @@ public class Card : MonoBehaviour
 
         cardSpriteSheet = Resources.LoadAll<Sprite>("Graphics/Cards");
 
-        if (transform.parent.name == "Cards")
-        {
-
-            switch (int.Parse(transform.parent.parent.name.Split(' ').Last())) // We get the index of the player, i.e 1 of "player 1"
-            {
-                case 2:
-                    ZRotation = -90f;
-                    break;
-                case 3:
-                    ZRotation = -180f;
-                    break;
-                case 4:
-                    ZRotation = -270f;
-                    break;
-            }
-            transform.Rotate(new Vector3(0, 0, ZRotation));
-        }
+        //if (transform.parent.name == "Cards")
+        //{
+        //    switch (int.Parse(transform.parent.parent.name.Split(' ').Last())) // We get the index of the player, i.e 1 of "player 1"
+        //    {
+        //        case 2:
+        //            ZRotation = -90f;
+        //            break;
+        //        case 3:
+        //            ZRotation = -180f;
+        //            break;
+        //        case 4:
+        //            ZRotation = -270f;
+        //            break;
+        //    }
+        //    transform.Rotate(new Vector3(0, 0, ZRotation));
+        //}
 
         UpdateTexture();
 
@@ -69,63 +67,102 @@ public class Card : MonoBehaviour
          */
     }
 
-    public int GetNumber() { return this.number; }
-    public CardColor GetColor() { return this.color; }
+    public int GetNumber() { return number; }
+    public CardColor GetColor() { return color; }
     public void SetNumber(int newNumber)
     {
-        this.number = newNumber;
+        number = newNumber;
     }
     public void SetColor(CardColor newColor)
     {
-        this.color = newColor;
+        color = newColor;
     }
-    public void ColorMutator(CardColor newColor)
-    { 
-        //mutator that changes the color of a wild card to make the color noticeable
+    //public void MutateColor(CardColor newColor)
+    //{ 
+    //    //mutator that changes the color of a wild card to make the color noticeable
+    //    SetColor(newColor);
+    //    if (GetNumber() == 14) // Regular wild
+    //    {
+    //        switch (newColor)
+    //        {
+    //            case CardColor.Yellow:
+    //            { cardSprite.sprite = cardSpriteSheet[2]; break; }
+    //            case CardColor.Red:
+    //            { cardSprite.sprite = cardSpriteSheet[3]; break; }
+    //            case CardColor.Blue:
+    //            { cardSprite.sprite = cardSpriteSheet[4]; break; }
+    //            case CardColor.Green:
+    //            { cardSprite.sprite = cardSpriteSheet[5]; break; }
+    //        }
+    //    }
+    //    else if (GetNumber() == 15) // Wild Draw 4
+    //    {
+    //        switch (newColor)
+    //        {
+    //            case CardColor.Yellow:
+    //            { cardSprite.sprite = cardSpriteSheet[7]; break; }
+    //            case CardColor.Red:
+    //            { cardSprite.sprite = cardSpriteSheet[8]; break; }
+    //            case CardColor.Blue:
+    //            { cardSprite.sprite = cardSpriteSheet[9]; break; }
+    //            case CardColor.Green:
+    //            { cardSprite.sprite = cardSpriteSheet[10]; break; }
+    //        }
+    //    }
+    //    else
+    //    {
+    //        Debug.Log("Error: card isn't wild, cannot change color");
+    //        Debug.Log($"Received card with number {GetNumber()}");
+    //    }
+    //}
+    private int GetCorrectMutateColorSpriteSheetNumber(CardColor color) // This function exists because I hate myself (and how I wrote other functions)
+    {
         if (GetNumber() == 14)
         {
-            this.color = newColor;
-            switch (this.color)
+            switch (color)
             {
                 case CardColor.Yellow:
-                    cardSprite.sprite = cardSpriteSheet[2];
-                    break;
+                {
+                    return 2;
+                }
                 case CardColor.Red:
-                    cardSprite.sprite = cardSpriteSheet[3];
-                    break;
+                {
+                    return 3;
+                }
                 case CardColor.Blue:
-                    cardSprite.sprite = cardSpriteSheet[4];
-                    break;
+                {
+                    return 4;
+                }
                 case CardColor.Green:
-                    cardSprite.sprite = cardSpriteSheet[5];
-                    break;
+                {
+                    return 5;
+                }
             }
         }
         else if (GetNumber() == 15)
         {
-            this.color = newColor;
-            switch (this.color)
+            switch (color)
             {
                 case CardColor.Yellow:
-                    cardSprite.sprite = cardSpriteSheet[7];
-                    break;
+                {
+                    return 7;
+                }
                 case CardColor.Red:
-                    cardSprite.sprite = cardSpriteSheet[8];
-                    break;
+                {
+                    return 8;
+                }
                 case CardColor.Blue:
-                    cardSprite.sprite = cardSpriteSheet[9];
-                    break;
+                {
+                    return 9;
+                }
                 case CardColor.Green:
-                    cardSprite.sprite = cardSpriteSheet[10];
-                    break;
+                {
+                    return 10;
+                }
             }
         }
-        else
-        {
-            Debug.Log("Error: card isn't wild, cannot change color");
-        }
+        return -999;
     }
-
     //private void OnMouseDown()
     //{
     //    if (potentialToPlay && owner.GetCanPlay() && canPlay)
@@ -140,13 +177,29 @@ public class Card : MonoBehaviour
         switch (color)
         {
             case CardColor.Red:
-            { spritePathNum = 24 + number; break; }
+            { 
+                spritePathNum = 24 + number; 
+                if (GetNumber() == 14 || GetNumber() == 15) { spritePathNum = GetCorrectMutateColorSpriteSheetNumber(color); }
+                break; 
+            }
             case CardColor.Green:
-            { spritePathNum = 50 + number; break; }
+            { 
+                spritePathNum = 50 + number;
+                if (GetNumber() == 14 || GetNumber() == 15) { spritePathNum = GetCorrectMutateColorSpriteSheetNumber(color); }
+                break; 
+            }
             case CardColor.Yellow:
-            { spritePathNum = 11 + number; break; }
+            { 
+                spritePathNum = 11 + number;
+                if (GetNumber() == 14 || GetNumber() == 15) { spritePathNum = GetCorrectMutateColorSpriteSheetNumber(color); }
+                break; 
+            }
             case CardColor.Blue:
-            { spritePathNum = 37 + number; break; }
+            { 
+                spritePathNum = 37 + number;
+                if (GetNumber() == 14 || GetNumber() == 15) { spritePathNum = GetCorrectMutateColorSpriteSheetNumber(color); }
+                break; 
+            }
             case CardColor.Wild:
             {
                 switch (number)
@@ -162,6 +215,21 @@ public class Card : MonoBehaviour
             }
         }
         cardSprite.sprite = cardSpriteSheet[spritePathNum];
+    }
+
+    private void OnMouseEnter()
+    {
+        if (handCard && transform.parent.parent.GetComponent<Player>().GetCanPlay())
+        {
+            transform.localPosition = new Vector3(transform.localPosition.x, transform.localPosition.y + 0.25f, transform.localPosition.z);
+        }
+    }
+    private void OnMouseExit()
+    {
+        if (handCard && transform.parent.parent.GetComponent<Player>().GetCanPlay())
+        {
+            transform.localPosition = new Vector3(transform.localPosition.x, transform.localPosition.y - 0.25f, transform.localPosition.z);
+        }
     }
 
     public void DestroyCard() { Destroy(gameObject); }

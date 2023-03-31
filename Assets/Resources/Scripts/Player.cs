@@ -4,18 +4,20 @@ using System.Linq;
 using Unity.Collections.LowLevel.Unsafe;
 using UnityEngine;
 using TMPro;
+using System.Runtime.CompilerServices;
+using UnityEngine.UI;
+using System.Drawing;
 
 public class Player : MonoBehaviour
 {
     public List<Card> deck = new();
-    public GameObject canvasProfile;
+    public GameObject canvas;
 
     public string playerName;
 
     private GameObject cardObject;
 
     [SerializeField] bool canPlay;
-    private int playerSelectedImage;
 
     private GameController gameController;
     private Card topCard;
@@ -28,7 +30,7 @@ public class Player : MonoBehaviour
     void Start()
     {
         gameController = GameObject.Find(gameControllerName).GetComponent<GameController>();
-        canvasProfile.transform.Find(profileName).Find(usernameName).GetComponent<TextMeshProUGUI>().text = playerName;
+        canvas.transform.Find(gameObject.name).Find(profileName).Find(usernameName).GetComponent<TextMeshProUGUI>().text = playerName;
         cardObject = Resources.Load<GameObject>("Prefabs/Card");
         DrawHand();
     }
@@ -48,7 +50,14 @@ public class Player : MonoBehaviour
     }
     private void Update()
     {
-        if (Input.GetMouseButtonDown(0) && canPlay)
+        if (canPlay)
+        {
+            Play();
+        }
+    }
+    private void Play()
+    {
+        if (Input.GetMouseButtonDown(0))
         {
             RaycastHit2D hit = Physics2D.Raycast(Camera.main.ScreenToWorldPoint(Input.mousePosition), Vector2.zero);
 
@@ -59,19 +68,28 @@ public class Player : MonoBehaviour
                     Card clickedCard = hit.collider.GetComponent<Card>();
                     if (GetCardPlayable(clickedCard))
                     {
-                        PlayCard(clickedCard);
+                        FinishTurn(clickedCard);
                     }
                 }
-                else if (hit.collider.name == "Draw pile") // We look for clicks on the draw pile
+                else if (hit.collider.name == "Draw pile")
                 {
-                    // We want to draw at least one card - which is why we use a do while loop. 
                     Card drawedCard;
-                    do
+                    if (gameController.drawToMatch)
                     {
-                        drawedCard = DrawCard();
-                    } while (!GetCardPlayable(drawedCard));
+                        // We want to draw at least one card
+                        do
+                        {
+                            drawedCard = DrawCard();
+                        } while (!GetCardPlayable(drawedCard)); 
+                    }
+                    else { drawedCard = DrawCard(); }
+
+                    //if (gameController.forcePlay) { FinishTurn(drawedCard); }
+                    //else { SkipTurn(); }
+
+                    // TODO
                     SkipTurn();
-                } 
+                }
             }
         }
     }
@@ -87,12 +105,6 @@ public class Player : MonoBehaviour
             }
         }
     }
-    private void PlayCard(Card playedCard)
-    {
-        gameController.SetTopCard(playedCard);
-        FinishTurn(playedCard);
-        UpdateDeck();
-    }
     public void FinishTurn(Card playedCard)
     {
         canPlay = false;
@@ -105,17 +117,17 @@ public class Player : MonoBehaviour
                 deck[i].canPlay = false;
                 if (deck[i].Equals(playedCard))
                 {
-                    deck[i].DestroyCard();
+                    deck.RemoveAt(i);
+                    playedCard.DestroyCard();
+                    Invoke(nameof(UpdateCardsLayout), 0.1f);
                 }
             } 
         }
-        //StartCoroutine(WaitForDestroyCardBeforeUpdateDeck());
-        gameController.PlayerFinishedTurn(playerIndex);
+        gameController.PlayerFinishedTurn(gameObject.GetComponent<Player>(), playedCard);
     }
     private void SkipTurn()
     {
         canPlay = false;
-        string playerIndex = gameObject.name.Split(' ').Last();
 
         lock (deck)
         {
@@ -124,16 +136,24 @@ public class Player : MonoBehaviour
                 deck[i].canPlay = false;
             } 
         }
-        gameController.PlayerFinishedTurn(playerIndex);
+        gameController.PlayerFinishedTurn(gameObject.GetComponent<Player>(), null);
     }
     public bool GetCanPlay() { return canPlay; }
-
-    //private IEnumerator WaitForDestroyCardBeforeUpdateDeck()
-    //{
-    //    yield return new WaitForEndOfFrame();
-    //    UpdateDeck();
-    //}
     public List<Card> GetDeck() { return deck; }
+
+    public void SetDeck(List<Card> newDeck)
+    {
+        for (int i = 0; i < deck.Count; i++)
+        {
+            deck[i].DestroyCard();
+        }
+        deck.Clear();
+
+        for (int i = 0; i < newDeck.Count; i++)
+        {
+            DrawCard(newDeck[i]);
+        }
+    }
 
     private void DrawHand()
     {
@@ -142,7 +162,7 @@ public class Player : MonoBehaviour
             DrawCard();
         }
     }
-    private Card DrawCard()
+    public Card DrawCard()
     {
         Card instantiatedCard = Instantiate(cardObject, transform.Find(cardsName)).GetComponent<Card>();
         lock (deck)
@@ -158,10 +178,161 @@ public class Player : MonoBehaviour
         // Set name from "Card(Clone)" to meaningful name that represents card properties
         instantiatedCard.gameObject.name = $"{instantiatedCard.GetNumber()} {instantiatedCard.GetColor()}";
 
+        instantiatedCard.handCard = true;
+
+        Invoke(nameof(UpdateCardsLayout), 0.1f);
+
+        return instantiatedCard;
+    }
+    private Card DrawCard(Card card)
+    {
+        Card instantiatedCard = Instantiate(cardObject, transform.Find(cardsName)).GetComponent<Card>();
+        lock (deck)
+        {
+            deck.Add(instantiatedCard);
+        }
+
+        instantiatedCard.SetNumber(card.GetNumber());
+        instantiatedCard.SetColor(card.GetColor());
+
+        // Set name from "Card(Clone)" to meaningful name that represents card properties
+        instantiatedCard.gameObject.name = $"{instantiatedCard.GetNumber()} {instantiatedCard.GetColor()}";
+
+        instantiatedCard.handCard = true;
+
+        Invoke(nameof(UpdateCardsLayout), 0.1f);
+
         return instantiatedCard;
     }
     private bool GetCardPlayable(Card card) // Checks if the given card can be played on top of the top card
     {
         return card.GetNumber() == topCard.GetNumber() || card.GetColor() == topCard.GetColor() || card.GetNumber() >= 14;
+    }
+    public void WildColoring()
+    {
+        GameObject coloring = canvas.transform.Find("Wild coloring").gameObject;
+        coloring.SetActive(true);
+        for (int i = 0; i < coloring.transform.childCount; i++)
+        {
+            coloring.transform.GetChild(i).GetComponent<Button>().onClick.AddListener(MutateColor);
+        }
+    }
+    public void Draw4Coloring()
+    {
+        GameObject coloring = canvas.transform.Find("Draw4 coloring").gameObject;
+        coloring.SetActive(true);
+        for (int i = 0; i < coloring.transform.childCount; i++)
+        {
+            coloring.transform.GetChild(i).GetComponent<Button>().onClick.AddListener(MutateColor);
+        }
+    }
+    private void FinishColoring()
+    {
+        GameObject draw4 = canvas.transform.Find("Draw4 coloring").gameObject;
+        draw4.SetActive(false);
+        GameObject wild = canvas.transform.Find("Wild coloring").gameObject;
+        wild.SetActive(false);
+    }
+    public void MutateColor()
+    {
+        GameObject color = UnityEngine.EventSystems.EventSystem.current.currentSelectedGameObject;
+        Card toMutate = gameController.GetTopCard();
+
+        switch (color.name.Trim())
+        {
+            case "Green":
+            {
+                //toMutate.MutateColor(CardColor.Green);
+                toMutate.SetColor(CardColor.Green);
+                break;
+            }
+            case "Yellow":
+            {
+                //toMutate.MutateColor(CardColor.Yellow);
+                toMutate.SetColor(CardColor.Yellow);
+                break;
+            }
+            case "Red":
+            {
+                //toMutate.MutateColor(CardColor.Red);
+                toMutate.SetColor(CardColor.Red);
+                break;
+            }
+            case "Blue":
+            {
+                //toMutate.MutateColor(CardColor.Blue);
+                toMutate.SetColor(CardColor.Blue);
+                break;
+            }
+        }
+        gameController.PlayerFinishedTurn(gameObject.GetComponent<Player>(), toMutate);
+        FinishColoring();
+    }
+    public void ChangeHands()
+    {
+        GameObject arrows = canvas.transform.Find("Seven arrows").gameObject;
+        arrows.SetActive(true);
+        for (int i = 0; i < arrows.transform.childCount; i++)
+        {
+            arrows.transform.GetChild(i).GetComponent<Button>().onClick.AddListener(PickPlayer);
+            switch (gameController.GetTopCard().GetColor())
+            {
+                case CardColor.Green:
+                {
+                    arrows.transform.GetChild(i).GetComponent<Image>().color = new Color32(48, 247, 71, 255);
+                    break;
+                }
+                case CardColor.Yellow:
+                {
+                    arrows.transform.GetChild(i).GetComponent<Image>().color = new Color32(230, 249, 45, 255);
+                    break;
+                }
+                case CardColor.Red:
+                {
+                    arrows.transform.GetChild(i).GetComponent<Image>().color = new Color32(236, 39, 23, 255);
+                    break;
+                }
+                case CardColor.Blue:
+                {
+                    arrows.transform.GetChild(i).GetComponent<Image>().color = new Color32(47, 248, 246, 255);
+                    break;
+                }
+            }
+        }
+    }
+    public void PickPlayer()
+    {
+        GameObject player = UnityEngine.EventSystems.EventSystem.current.currentSelectedGameObject;
+        string pickedPlayerIndex = player.name.Split(' ').Last();
+
+        gameController.SwapHands(gameObject.name.Split(' ').Last(), pickedPlayerIndex);
+
+        GameObject arrows = canvas.transform.Find("Seven arrows").gameObject;
+        arrows.SetActive(false);
+    }
+    private void UpdateCardsLayout()
+    {
+        transform.GetChild(0).GetComponent<HandLayout>().UpdateVariables();
+    }
+    public void ShowUnoButton()
+    {
+        GameObject unoButton = canvas.transform.Find("Uno").gameObject;
+        unoButton.SetActive(true);
+        unoButton.GetComponent<Button>().onClick.AddListener(CallUno);
+    }
+    public void CallUno()
+    {
+        unoed = true;
+        canvas.transform.Find("Uno").gameObject.SetActive(false);
+    }
+    public void ShowCallOutButton()
+    {
+        GameObject unoButton = canvas.transform.Find("Call out").gameObject;
+        unoButton.SetActive(true);
+        unoButton.GetComponent<Button>().onClick.AddListener(CallOutUnunoed);
+    }
+    public void CallOutUnunoed()
+    {
+        canvas.transform.Find("Call out").gameObject.SetActive(false);
     }
 }

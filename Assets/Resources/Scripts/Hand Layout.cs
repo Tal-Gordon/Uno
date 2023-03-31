@@ -2,24 +2,20 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
-public class HandLayoutHorizontal : MonoBehaviour
+public class HandLayout : MonoBehaviour
 {
     public List<GameObject> cards = new();
     public float yValue = 1f;
     public float spacing = 0.67f;
-    public bool backwards = false;
-
-    private float multiplier = 1f; // Affected by "backwards" bool, will ensure correct snapping for hands on the other side
 
     private readonly float cardWidth = 0.87f;
     void Start()
     {
-        if (backwards) { multiplier *= -1f; }
-        yValue *= multiplier;
-        InvokeRepeating(nameof(UpdateVariables), 0f, 0.25f);
+        UpdateVariables();
+        //InvokeRepeating(nameof(UpdateVariables), 0, 0.25f);
     }
 
-    void UpdateVariables()
+    public void UpdateVariables()
     {
         cards.Clear();
         int amountOfCards = 0;
@@ -34,11 +30,10 @@ public class HandLayoutHorizontal : MonoBehaviour
         }
 
         int sortingOrder = 1;
-        if (backwards) { sortingOrder = amountOfCards; }
         for (int i = 0; i < cards.Count; i++)
         {
-            cards[i].GetComponent<SpriteRenderer>().sortingOrder = (int)(sortingOrder + (i * multiplier));
-            cards[i].transform.localPosition = new Vector3(cards[i].transform.position.x, yValue, 0);
+            cards[i].GetComponent<SpriteRenderer>().sortingOrder = sortingOrder + i;
+            cards[i].transform.localPosition = new Vector3(cards[i].transform.localPosition.x, yValue, 0);
         }
         if (cards.Count > 1)
         {
@@ -101,8 +96,12 @@ public class HandLayoutHorizontal : MonoBehaviour
             }
         }
     }
-    private float GetAnchorXPosition()
+    private float GetAnchorXPosition() // May also return the y position, but is used solely to set the x position of the cards
     {
-        return transform.parent.position.x - ((cardWidth / 2) * multiplier);
+        if (transform.parent.rotation.eulerAngles.z == 90 || transform.parent.rotation.eulerAngles.z == 270)
+        {
+            return transform.parent.localPosition.y - (cardWidth / 2);
+        }
+        return transform.parent.localPosition.x - (cardWidth / 2);
     }
 }
