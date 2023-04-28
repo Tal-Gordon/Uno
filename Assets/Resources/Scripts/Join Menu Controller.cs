@@ -10,6 +10,7 @@ public class JoinMenuController : MonoBehaviour
     public TextMeshProUGUI console;
 
     public List<GameObject> servers = new();
+    public string[] users = new string[4];
 
     private GameObject serversObject;
     private GameObject joinedServer;
@@ -110,7 +111,7 @@ public class JoinMenuController : MonoBehaviour
     {
         for (int i = 1; i < serversObject.transform.childCount; i++) 
         {
-            Destroy(serversObject.transform.GetChild(i).gameObject); // We clean the playground so we can play again
+            Destroy(serversObject.transform.GetChild(i).gameObject);
         }
 
         List<(string, string, bool)> newServers = client.GetServersRenderInfo();
@@ -129,29 +130,14 @@ public class JoinMenuController : MonoBehaviour
 
         String[] playerOrder = new string[4];
         playerOrder[0] = hostUsername;
-
-        //if (player1Username != notConnected && player2Username != notConnected)
-        //{
-        //    playerOrder[1] = player1Username;
-        //    playerOrder[2] = player2Username;
-        //    playerOrder[3] = clientUsername;
-        //}
-        //else if (player1Username != notConnected && player2Username == notConnected)
-        //{
-        //    playerOrder[1] = player1Username;
-        //    playerOrder[2] = clientUsername;
-        //    playerOrder[3] = notConnected;
-        //}
-        //else
-        //{
-        //    playerOrder[1] = clientUsername;
-        //    playerOrder[2] = notConnected;
-        //    playerOrder[3] = notConnected;
-        //}
-        playerOrder[0] = hostUsername;
         playerOrder[1] = player1Username;
         playerOrder[2] = player2Username;
         playerOrder[3] = player3Username;
+
+        for (int i = 0; i < users[i].Length; i++)
+        {
+            users[i] = playerOrder[i];
+        }
 
         for (int i = 0; i < playersObject.transform.childCount; i++)
         {

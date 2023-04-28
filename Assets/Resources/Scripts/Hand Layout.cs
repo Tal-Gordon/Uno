@@ -35,7 +35,7 @@ public class HandLayout : MonoBehaviour
             cards[i].GetComponent<SpriteRenderer>().sortingOrder = sortingOrder + i;
             cards[i].transform.localPosition = new Vector3(cards[i].transform.localPosition.x, yValue, 0);
         }
-        if (cards.Count > 1)
+        if (cards.Count > 0)
         {
             UpdateCardsSpacing(spacing);
         }
@@ -83,16 +83,19 @@ public class HandLayout : MonoBehaviour
                 cards[middleCardIndex].transform.localPosition = new Vector3(cardsMeanXPosition, cards[middleCardIndex].transform.localPosition.y, 0);
             }
 
-            // Handle second half of deck
-            for (int i = middleCardIndex; i < cards.Count - 1; i++)
+            if (cards.Count > 1)
             {
-                cards[i + 1].transform.localPosition = new Vector3(cards[i].transform.localPosition.x + spacing, cards[i + 1].transform.localPosition.y, 0);
-            }
+                // Handle second half of deck
+                for (int i = middleCardIndex; i < cards.Count - 1; i++)
+                {
+                    cards[i + 1].transform.localPosition = new Vector3(cards[i].transform.localPosition.x + spacing, cards[i + 1].transform.localPosition.y, 0);
+                }
 
-            // Handle first half of deck
-            for (int i = middleCardIndex; i > 0; i--)
-            {
-                cards[i - 1].transform.localPosition = new Vector3(cards[i].transform.localPosition.x - spacing, cards[i + 1].transform.localPosition.y, 0);
+                // Handle first half of deck
+                for (int i = middleCardIndex; i > 0; i--)
+                {
+                    cards[i - 1].transform.localPosition = new Vector3(cards[i].transform.localPosition.x - spacing, cards[i + 1].transform.localPosition.y, 0);
+                } 
             }
         }
     }

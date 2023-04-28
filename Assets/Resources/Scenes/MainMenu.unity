@@ -5440,6 +5440,11 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   console: {fileID: 395506508}
   servers: []
+  users:
+  - 
+  - 
+  - 
+  - 
 --- !u!1 &1117818678
 GameObject:
   m_ObjectHideFlags: 0
@@ -6018,6 +6023,7 @@ MonoBehaviour:
   serverName: Default Server Name
   passwordLocked: 0
   serverPassword: 
+  active: 0
 --- !u!1 &1225488083
 GameObject:
   m_ObjectHideFlags: 0
@@ -6394,6 +6400,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   joinMenuController: {fileID: 1043667447}
+  active: 0
 --- !u!1 &1333651691
 GameObject:
   m_ObjectHideFlags: 0

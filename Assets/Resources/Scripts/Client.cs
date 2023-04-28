@@ -8,6 +8,8 @@ using System;
 using System.Text;
 using System.Threading;
 using System.Linq;
+using System.Reflection;
+using Unity.VisualScripting;
 
 public class Client : MonoBehaviour
 {
@@ -15,16 +17,18 @@ public class Client : MonoBehaviour
     public JoinMenuController joinMenuController;
 
     public List<(string IpAddress, ushort port, string serverName, string numOfConnected, bool passReq, bool isAlive)> serversInfo = new();
+    public bool active = false;
 
     private Socket multicastClient;
     private Socket client;
     private Thread multicastReceiveThread;
     private Thread serverReceiveThread;
+    private GameController gameController;
 
     private List<string> receivedMessages = new();
     private readonly string multicastAddress = "239.255.42.99";
     private readonly ushort multicastPort = 15000;
-
+    private string index = string.Empty;
     private void Awake()
     {
         if (Instance != null)
@@ -48,6 +52,8 @@ public class Client : MonoBehaviour
         StartCoroutine(ProcessReceivedMulticastData());
         StartCoroutine(ProcessReceivedServerData());
         StartCoroutine(CheckAliveServers());
+
+        active = true;
     }
     private Socket SetupMulticastClient()
     {
@@ -132,7 +138,10 @@ public class Client : MonoBehaviour
             }
         }
     }
-
+    /// <summary>
+    /// Sends a message to the server
+    /// </summary>
+    /// <param name="message"></param>
     private void SendMessageToServer(string message)
     {
         // Method assumes client is already connected to server
@@ -233,6 +242,10 @@ public class Client : MonoBehaviour
         serverReceiveThread.Abort();
         serverReceiveThread.Join();
         client.Close();
+        if (SceneManager.GetActiveScene().name == "Game")
+        {
+            SceneManager.LoadScene("MainMenu");
+        }
     }
 
     private string GetResponse(string data)
@@ -313,7 +326,72 @@ public class Client : MonoBehaviour
             }
             case "gamestart":
             {
+                index = parts[1];
                 PrepareForGame();
+                return string.Empty;
+            }
+            case "playermove":
+            {
+                string playerIndex = parts[1];
+                Card playedCard = null;
+
+                if (parts[2] != "null")
+                {
+                    int cardNum = int.Parse(parts[2]);
+                    if (!Enum.TryParse(parts[3], true, out CardColor cardColor))
+                    {
+                        Debug.LogError($"Server sent unknown color: {parts[3]}");
+                    }
+                    playedCard.SetNumber(cardNum);
+                    playedCard.SetColor(cardColor);
+                }
+                gameController.PlayerFinishedTurn(playerIndex, playedCard);
+                return string.Empty;
+            }
+            case "calledout":
+            {
+                string callingPlayerIndex = parts[1];
+                if (gameController.selfPlayer.GetDeck().Count == 1 && !gameController.selfPlayer.GetUnoed()) 
+                {
+                    gameController.selfPlayer.DrawCard();
+                    gameController.selfPlayer.DrawCard();
+                }
+                gameController.selfPlayer.UnshowCallOutButton();
+                return string.Empty;
+            }
+            case "getdeck":
+            {
+                string message = "senddeck";
+                List<Card> deck = new(gameController.selfPlayer.GetDeck());
+                for (int i = 0; i < deck.Count; i++)
+                {
+                    string num = deck[i].GetNumber().ToString(); // 3
+                    if (num.Length == 1) { num = "0" + num; } // 03
+                    string color = deck[i].GetColor().ToString(); // yellow
+                    string cardInfo = num + color; // 03yellow
+
+                    message += $";{cardInfo}";
+                }
+                return message;
+            }
+            case "senddeck":
+            {
+                string playerIndex = parts[1];
+                List<Card> deck = new();
+                for (int i = 2; i < parts.Length; i++) // Skipping the command and the index; expected input example: 03yellow
+                {
+                    Card card = null;
+                    int num;
+
+                    num = int.Parse(parts[i].Substring(0, 2));
+                    Enum.TryParse(parts[i].Substring(2), out CardColor color);
+
+                    card.SetNumber(num);
+                    card.SetColor(color);
+
+                    deck.Add(card);
+                }
+                gameController.SwapHands(gameController.selfPlayer.GetIndex(), deck); 
                 return string.Empty;
             }
             default:
@@ -370,16 +448,48 @@ public class Client : MonoBehaviour
         {
             StopAllCoroutines();
             client.Close();
+            active = false;
         }
     }
-
     private void UpdateRenderedServers()
     {
         joinMenuController.RerenderServers();
     }
-
+// -------------------------------------------------------------------------------------------------------------------------------------------------------------------
     private void PrepareForGame()
     {
         SceneManager.LoadScene("Game");
+        SceneManager.activeSceneChanged += ChangedScene;
+
+    }
+    private void ChangedScene(Scene current, Scene next)
+    {
+        GameObject[] roots = next.GetRootGameObjects();
+        for (int i = 0; i < roots.Length; i++)
+        {
+            if (roots[i].TryGetComponent(out gameController)) { gameController.IndexPlayers(index); break; }
+        }
+    }
+    public void PlayerMadeMove(Card playedCard)
+    {
+        string message = $"playermove;{gameController.selfPlayer.GetIndex()};";
+        if (playedCard != null)
+        {
+            message += $"{playedCard.GetNumber()};{playedCard.GetColor()}";
+        }
+        else
+        {
+            message += "null";
+        }
+
+        SendMessageToServer(message);
+    }
+    public void GetPlayerDeck(string playerIndex)
+    {
+        SendMessageToServer($"getdeck;{playerIndex}");
+    }
+    public void SwapHands(string chosenPlayerIndex)
+    {
+        SendMessageToServer($"getdeck;{chosenPlayerIndex}");
     }
 }

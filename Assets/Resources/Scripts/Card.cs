@@ -26,6 +26,8 @@ public class Card : MonoBehaviour
     private BoxCollider2D boxCollider;
     private static Sprite[] cardSpriteSheet;
 
+    private bool mouseEnteredCard = false;
+
     void Start()
     {
         boxCollider = GetComponent<BoxCollider2D>();
@@ -222,15 +224,23 @@ public class Card : MonoBehaviour
         if (handCard && transform.parent.parent.GetComponent<Player>().GetCanPlay())
         {
             transform.localPosition = new Vector3(transform.localPosition.x, transform.localPosition.y + 0.25f, transform.localPosition.z);
+            mouseEnteredCard = true;
+        }
+    }
+    private void OnMouseOver()
+    {
+        if (handCard && transform.parent.parent.GetComponent<Player>().GetCanPlay() && !mouseEnteredCard) // Fix for when player gets turn with mouse on card
+        {
+            OnMouseEnter();
         }
     }
     private void OnMouseExit()
     {
-        if (handCard && transform.parent.parent.GetComponent<Player>().GetCanPlay())
+        if (handCard && transform.parent.parent.GetComponent<Player>().GetCanPlay() && mouseEnteredCard)
         {
             transform.localPosition = new Vector3(transform.localPosition.x, transform.localPosition.y - 0.25f, transform.localPosition.z);
         }
+        mouseEnteredCard = false;
     }
-
     public void DestroyCard() { Destroy(gameObject); }
 }

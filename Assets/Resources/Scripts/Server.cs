@@ -8,6 +8,11 @@ using System.Net;
 using System.Net.Sockets;
 using System.Threading;
 using System.Linq;
+using UnityEditor.VersionControl;
+using static UnityEditor.Experimental.GraphView.GraphView;
+using System.Numerics;
+using JetBrains.Annotations;
+using Unity.VisualScripting;
 
 public class Server : MonoBehaviour
 {
@@ -17,9 +22,18 @@ public class Server : MonoBehaviour
     public string serverName;
     public bool passwordLocked;
     public string serverPassword;
+    public bool active = false; // Used by Game Controller to distinguish between host and clients
+    // Special rules settings
+    public bool stacking = true;
+    public bool sevenZero = true;
+    public bool jumpIn = true;
+    public bool forcePlay = true;
+    public bool noBluffing = false;
+    public bool drawToMatch = true;
 
     private Socket multicastServer;
     private Socket server;
+    private GameController gameController;
 
     private List<(Socket, string)> connectedClients = new(); // socket, username
     private List<(Socket, string)> receivedMessages = new(); // Socket that sent message, message
@@ -40,10 +54,6 @@ public class Server : MonoBehaviour
         Instance = this;
         DontDestroyOnLoad(gameObject);
     }
-    void Start()
-    {
-        
-    }
     public void ManualStart()
     {
         // Trick to find local IP address
@@ -61,6 +71,8 @@ public class Server : MonoBehaviour
 
         StartCoroutine(SendMessageToMulticastGroup());
         StartCoroutine(ProcessReceivedData());
+
+        active = true;
     }
     private Socket SetupServer()
     {
@@ -118,17 +130,6 @@ public class Server : MonoBehaviour
                 (ar) =>
                 {
                     int bytesSent = multicastServer.EndSend(ar);
-                    //if (msg.Equals("Bye!", StringComparison.Ordinal))
-                    //{
-                    //    try
-                    //    {
-                    //        multicastServer.Shutdown(SocketShutdown.Both);
-                    //    }
-                    //    finally
-                    //    {
-                    //        multicastServer.Close();
-                    //    }
-                    //}
                 }
                 , null);
             yield return new WaitForSeconds(1f);
@@ -245,6 +246,63 @@ public class Server : MonoBehaviour
                 DisconnectClient(socket);
                 return string.Empty;
             }
+            case "playermove":
+            {
+                string playerIndex = parts[1];
+                Card playedCard = null;
+
+                if (parts[2] != "null")
+                {
+                    int cardNum = int.Parse(parts[2]);
+                    if (!Enum.TryParse(parts[3], true, out CardColor cardColor))
+                    {
+                        Debug.LogError($"Server sent unknown color: {parts[3]}");
+                    }
+                    playedCard.SetNumber(cardNum);
+                    playedCard.SetColor(cardColor);
+                }
+                gameController.PlayerFinishedTurn(playerIndex, playedCard);
+                InformClients(data);
+                return string.Empty;
+            }
+            case "getdeck":
+            {
+                string playerIndex = parts[1];
+                string message;
+
+                if (playerIndex == gameController.selfPlayer.GetIndex())
+                {
+                    message = $"senddeck;{playerIndex}";
+                    List<Card> deck = new(gameController.selfPlayer.GetDeck());
+                    for (int i = 0; i < deck.Count; i++)
+                    {
+                        string num = deck[i].GetNumber().ToString(); // 3
+                        string color = deck[i].GetColor().ToString(); // yellow
+                        if (num.Length == 1) { num = "0" + num; } // 03
+                        string cardInfo = num + color; // 03yellow
+
+                        message += $";{cardInfo}";
+                    }
+                    return message;
+                }
+                else
+                {
+
+                    SendMessageToClient(GetSocketByPlayerIndex(playerIndex), $"getdeck;{playerIndex}");
+                    return string.Empty;
+                }
+            }
+            case "senddeck":
+            {
+                string playerIndex = parts[1];
+                string message = $"senddeck;{playerIndex}";
+                for (int i = 1; i < parts.Length; i++)
+                {
+                    message += $";{parts[i]}";
+                }
+                SendMessageToClient(GetSocketByPlayerIndex(playerIndex), message);
+                return string.Empty;
+            }
             default:
             {
                 // Handle unknown commands
@@ -262,7 +320,7 @@ public class Server : MonoBehaviour
         }
     }
 
-    private void DisconnectClient(Socket client)
+    public void DisconnectClient(Socket client)
     {
         for (int i = 0; i < connectedClients.Count; i++)
         {
@@ -287,11 +345,84 @@ public class Server : MonoBehaviour
         }
         multicastServer.Close();
         server.Close();
+        active = false;
+        if (SceneManager.GetActiveScene().name == "Game")
+        {
+            SceneManager.LoadScene("MainMenu");
+        }
     }
-
+// --------------------------------------------------------------------------------------------------------------------------------------------------
     public void StartGame()
     {
-        InformClients("gamestart");
+        StopCoroutine(SendMessageToMulticastGroup());
+
+        for (int i = 0; i < connectedClients.Count; i++)
+        {
+            SendMessageToClient(connectedClients[i].Item1, $"gamestart;{i + 2}"); // We account for the zero-based index and begin counting at 2, because host is always 1
+        }
         SceneManager.LoadScene("Game");
+        SceneManager.activeSceneChanged += ChangedScene;
+    }
+    public void ChangedScene(Scene current, Scene next)
+    {
+        GameObject[] roots = next.GetRootGameObjects();
+        for (int i = 0; i < roots.Length; i++)
+        {
+            if (roots[i].TryGetComponent(out gameController)) 
+            {
+                if (connectedClients.Count != 3)
+                {
+                    for (int j = 4; (4 - j) < (3 - connectedClients.Count); j--)
+                    {
+                        GameObject playerObject = gameController.GetPlayerObjectByIndex(j.ToString());
+                        Destroy(playerObject.GetComponent<FakePlayer>());
+                        playerObject.GetOrAddComponent<Player>().aiDriven = true;
+                        playerObject.GetComponent<Player>().playerName = "AI Player";
+                    }
+                }
+                StartNewGame();
+                break; 
+            }
+        }
+    }
+    public void PlayerMadeMove(string playerIndex, Card playedCard)
+    {
+        string message = $"playermove;{playerIndex};";
+
+        if (playedCard != null)
+        {
+            message += $"{playedCard.GetNumber()};{playedCard.GetColor()}";
+        }
+        else
+        {
+            message += "null";
+        }
+
+        InformClients(message);
+    }
+    public void StartNewGame()
+    {
+        StartCoroutine(gameController.LateStart(0.5f));
+    }
+    public void CalledOutUnunoed(string callingPlayerIndex)
+    {
+        InformClients($"calledout;{callingPlayerIndex}");
+        //for (int i = 0; i < players.Count; i++)
+        //{
+        //    if (players[i].GetDeck().Count == 1 && !players[i].GetUnoed())
+        //    {
+        //        ForceDrawCards(players[i], 2);
+        //        players[i].UnshowUnoButton();
+        //    }
+        //    players[i].UnshowCallOutButton();
+        //}
+    }
+    public void SwapHands(string chosenPlayerIndex)
+    {
+        SendMessageToClient(GetSocketByPlayerIndex(chosenPlayerIndex), $"getdeck");
+    }
+    private Socket GetSocketByPlayerIndex(string index)
+    {
+        return connectedClients[int.Parse(index) - 2].Item1;
     }
 }
