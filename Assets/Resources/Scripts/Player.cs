@@ -72,7 +72,7 @@ public class Player : MonoBehaviour, IPlayer
             Play();
         }
     }
-    private void Play()
+    public void Play()
     {
         if (!aiDriven)
         {
@@ -87,7 +87,7 @@ public class Player : MonoBehaviour, IPlayer
                         Card clickedCard = hit.collider.GetComponent<Card>();
                         if (GetCardPlayable(clickedCard))
                         {
-                            FinishTurn(clickedCard);
+                            gameController.PlayerFinishedTurn(this, clickedCard);
                         }
                     }
                     else if (hit.collider.name == "Draw pile")
@@ -99,7 +99,7 @@ public class Player : MonoBehaviour, IPlayer
         }
         else
         {
-            playerAI.GetCardToPlay();
+            playerAI.DoPlay();
         }
     }
     public void DrawCardsLogic()
@@ -115,7 +115,7 @@ public class Player : MonoBehaviour, IPlayer
                     drawedCard = DrawCard();
                 } while (!GetCardPlayable(drawedCard));
 
-                if (gameController.forcePlay) { FinishTurn(drawedCard); return; }
+                if (gameController.forcePlay) { gameController.PlayerFinishedTurn(this, drawedCard); return; }
                 else { ShowKeepPlayButtons(drawedCard); }
             }
             else { DrawCard(); }
@@ -127,7 +127,6 @@ public class Player : MonoBehaviour, IPlayer
                 DrawCard();
             }
         }
-
         SkipTurn();
     }
     public void GetTurnAndCheckCards()
@@ -196,6 +195,7 @@ public class Player : MonoBehaviour, IPlayer
                 deck[i].canPlay = false;
             }
         }
+        Debug.Log("everying should be fone");
         gameController.PlayerFinishedTurn(gameObject.GetComponent<Player>(), null);
     }
     public void CheckForJumpIn()
@@ -249,6 +249,11 @@ public class Player : MonoBehaviour, IPlayer
         instantiatedCard.gameObject.name = $"{instantiatedCard.GetNumber()} {instantiatedCard.GetColor()}";
 
         instantiatedCard.handCard = true;
+        if (GetComponent<AIplayer>()) 
+        { 
+            instantiatedCard.hidden = true; 
+            instantiatedCard.handCard = false; 
+        }
 
         Invoke(nameof(UpdateCardsLayout), 0.1f);
 
@@ -277,7 +282,9 @@ public class Player : MonoBehaviour, IPlayer
         instantiatedCard.gameObject.name = $"{instantiatedCard.GetNumber()} {instantiatedCard.GetColor()}";
 
         instantiatedCard.handCard = true;
+        if (aiDriven) { instantiatedCard.hidden = true; }
 
+        instantiatedCard.UpdateTexture();
         Invoke(nameof(UpdateCardsLayout), 0.1f);
 
         return instantiatedCard;
@@ -425,12 +432,15 @@ public class Player : MonoBehaviour, IPlayer
         GameObject player = UnityEngine.EventSystems.EventSystem.current.currentSelectedGameObject;
         string pickedPlayerIndex = player.name.Split(' ').Last();
 
-        if (client.active) { client.SwapHands(pickedPlayerIndex); }
-        else if (server.active) { }
-        gameController.SwapHands(GetIndex(), pickedPlayerIndex);
+        if (client.active) { client.PlayedSeven(pickedPlayerIndex); }
+        else if (server.active) { server.PlayedSeven(pickedPlayerIndex); }
 
         GameObject arrows = canvas.transform.Find("Seven arrows").gameObject;
         arrows.SetActive(false);
+    }
+    public void SwapHandsWithDeck(List<Card> deck)
+    {
+        gameController.SwapHands(GetIndex(), deck);
     }
     private void UpdateCardsLayout()
     {

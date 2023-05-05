@@ -21,6 +21,7 @@ public class Card : MonoBehaviour
 
     public bool canPlay;
     public bool handCard; // Some objects in my scene have this script but aren't meant to be played. This bool is meant to mark the cards in the players' hands, those that are playable
+    public bool hidden;
 
     private SpriteRenderer cardSprite;
     private BoxCollider2D boxCollider;
@@ -37,23 +38,6 @@ public class Card : MonoBehaviour
         boxCollider.offset = new Vector2(cardSprite.size.x/2, 0);
 
         cardSpriteSheet = Resources.LoadAll<Sprite>("Graphics/Cards");
-
-        //if (transform.parent.name == "Cards")
-        //{
-        //    switch (int.Parse(transform.parent.parent.name.Split(' ').Last())) // We get the index of the player, i.e 1 of "player 1"
-        //    {
-        //        case 2:
-        //            ZRotation = -90f;
-        //            break;
-        //        case 3:
-        //            ZRotation = -180f;
-        //            break;
-        //        case 4:
-        //            ZRotation = -270f;
-        //            break;
-        //    }
-        //    transform.Rotate(new Vector3(0, 0, ZRotation));
-        //}
 
         UpdateTexture();
 
@@ -165,13 +149,6 @@ public class Card : MonoBehaviour
         }
         return -999;
     }
-    //private void OnMouseDown()
-    //{
-    //    if (potentialToPlay && owner.GetCanPlay() && canPlay)
-    //    {
-    //        PlayCard();
-    //    }
-    //}
 
     public void UpdateTexture()
     {
@@ -217,6 +194,7 @@ public class Card : MonoBehaviour
             }
         }
         cardSprite.sprite = cardSpriteSheet[spritePathNum];
+        if (hidden) { cardSprite.sprite = cardSpriteSheet[0]; }
     }
 
     private void OnMouseEnter()

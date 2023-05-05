@@ -78,10 +78,11 @@ public class AIplayer : MonoBehaviour
             }
         }
     }
-    public void GetCardToPlay()
+    public void DoPlay()
     {
         List<Card> deck = new(player.GetDeck());
         bool hasPlayableCards = false;
+        Debug.Log($"ai player {player.name} is playing");
 
         for (int i = 0; i < deck.Count; i++)
         {
@@ -89,11 +90,13 @@ public class AIplayer : MonoBehaviour
         }
         if (!hasPlayableCards )
         {
+            Debug.Log("drawing cards");
             player.DrawCardsLogic();
         }
         else
         {
-            player.FinishTurn(ChooseCardFromDeck(deck));
+            Debug.Log("playing a card");
+            gameController.PlayerFinishedTurn(player, ChooseCardFromDeck(deck));
         }
     }
     private Card ChooseCardFromDeck(List<Card> deck)

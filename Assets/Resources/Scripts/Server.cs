@@ -8,11 +8,8 @@ using System.Net;
 using System.Net.Sockets;
 using System.Threading;
 using System.Linq;
-using UnityEditor.VersionControl;
-using static UnityEditor.Experimental.GraphView.GraphView;
-using System.Numerics;
-using JetBrains.Annotations;
 using Unity.VisualScripting;
+using UnityEditor.VersionControl;
 
 public class Server : MonoBehaviour
 {
@@ -37,6 +34,7 @@ public class Server : MonoBehaviour
 
     private List<(Socket, string)> connectedClients = new(); // socket, username
     private List<(Socket, string)> receivedMessages = new(); // Socket that sent message, message
+    private List<(string, string)> clientsNewHands = new(); // player index, hand in string representation
     private string[] connectedUsernames = new string[3];
     private readonly string multicastAddress = "239.255.42.99";
     private readonly ushort multicastPort = 15000;
@@ -267,40 +265,65 @@ public class Server : MonoBehaviour
             }
             case "getdeck":
             {
-                string playerIndex = parts[1];
-                string message;
+                string chosenPlayerIndex = parts[1];
+                string sentDeck = string.Empty;
+                string callingPlayerIndex = GetPlayerIndexBySocket(socket);
 
-                if (playerIndex == gameController.selfPlayer.GetIndex())
+                for (int i = 2; i < parts.Length; i++) // Skipping command and player index
                 {
-                    message = $"senddeck;{playerIndex}";
-                    List<Card> deck = new(gameController.selfPlayer.GetDeck());
-                    for (int i = 0; i < deck.Count; i++)
-                    {
-                        string num = deck[i].GetNumber().ToString(); // 3
-                        string color = deck[i].GetColor().ToString(); // yellow
-                        if (num.Length == 1) { num = "0" + num; } // 03
-                        string cardInfo = num + color; // 03yellow
+                    sentDeck += $";{parts[i]}";
+                }
+                //if (chosenPlayerIndex == gameController.selfPlayer.GetIndex())
+                //{
+                //    message = $"senddeck;{chosenPlayerIndex}";
+                //    List<Card> deck = new(gameController.selfPlayer.GetDeck());
+                //    for (int i = 0; i < deck.Count; i++)
+                //    {
+                //        string num = deck[i].GetNumber().ToString(); // 3
+                //        string color = deck[i].GetColor().ToString(); // yellow
+                //        if (num.Length == 1) { num = "0" + num; } // 03
+                //        string cardInfo = num + color; // 03yellow
 
-                        message += $";{cardInfo}";
-                    }
-                    return message;
+                //        message += $";{cardInfo}";
+                //    }
+                //    return message;
+                //}
+                //else
+                //{
+                //    SendMessageToClient(GetSocketByPlayerIndex(chosenPlayerIndex), $"getdeck;{chosenPlayerIndex}");
+                //    return string.Empty;
+                //}
+                clientsNewHands.Add((chosenPlayerIndex, sentDeck));
+                if (gameController.GetPlayerObjectByIndex(chosenPlayerIndex).GetComponent<Player>())
+                {
+                    List<Card> deck = new(gameController.GetPlayerObjectByIndex(chosenPlayerIndex).GetComponent<Player>().GetDeck());
+                    string stringDeck = GetStringRepresentationFromDeck(deck);
+                    clientsNewHands.Add((callingPlayerIndex, stringDeck));
                 }
                 else
                 {
-
-                    SendMessageToClient(GetSocketByPlayerIndex(playerIndex), $"getdeck;{playerIndex}");
-                    return string.Empty;
+                    SendMessageToClient(GetSocketByPlayerIndex(chosenPlayerIndex), $"getdeck;{callingPlayerIndex}");
                 }
+
+                return string.Empty;
             }
             case "senddeck":
             {
-                string playerIndex = parts[1];
-                string message = $"senddeck;{playerIndex}";
-                for (int i = 1; i < parts.Length; i++)
+                string callingPlayerIndex = parts[1];
+                string message = string.Empty;
+                for (int i = 2; i < parts.Length; i++) // Skipping command and player index
                 {
                     message += $";{parts[i]}";
                 }
-                SendMessageToClient(GetSocketByPlayerIndex(playerIndex), message);
+                clientsNewHands.Add((callingPlayerIndex, message));
+
+                int topCardNum = gameController.GetTopCard().GetNumber();
+                int amountOfHandsRegistered = clientsNewHands.Count;
+
+                if ((topCardNum == 7 && amountOfHandsRegistered == 2) || (topCardNum == 0 && amountOfHandsRegistered == 4))
+                {
+                    SwapHands();
+                }
                 return string.Empty;
             }
             default:
@@ -375,6 +398,7 @@ public class Server : MonoBehaviour
                     for (int j = 4; (4 - j) < (3 - connectedClients.Count); j--)
                     {
                         GameObject playerObject = gameController.GetPlayerObjectByIndex(j.ToString());
+                        //Destroy(playerObject.GetComponent<FakePlayer>());
                         Destroy(playerObject.GetComponent<FakePlayer>());
                         playerObject.GetOrAddComponent<Player>().aiDriven = true;
                         playerObject.GetComponent<Player>().playerName = "AI Player";
@@ -387,6 +411,7 @@ public class Server : MonoBehaviour
     }
     public void PlayerMadeMove(string playerIndex, Card playedCard)
     {
+        Debug.Log($"server was told that player {playerIndex} just played");
         string message = $"playermove;{playerIndex};";
 
         if (playedCard != null)
@@ -399,6 +424,13 @@ public class Server : MonoBehaviour
         }
 
         InformClients(message);
+        GameObject nextPlayer = gameController.GetPlayerObjectByIndex(gameController.GetNextPlayerIndex(playerIndex));
+        if (nextPlayer.GetComponent<Player>()) // Either self or ai player
+        {
+            Debug.Log($"server orders player {nextPlayer.GetComponent<Player>().GetIndex()} to play");
+            nextPlayer.GetComponent<Player>().GetTurnAndCheckCards();
+        }
+        // No need to explicitly order clients to play, they should know to give themselves a turn when it's due
     }
     public void StartNewGame()
     {
@@ -417,12 +449,94 @@ public class Server : MonoBehaviour
         //    players[i].UnshowCallOutButton();
         //}
     }
-    public void SwapHands(string chosenPlayerIndex)
+    public void GetClientDeck(string chosenPlayerIndex)
     {
         SendMessageToClient(GetSocketByPlayerIndex(chosenPlayerIndex), $"getdeck");
     }
     private Socket GetSocketByPlayerIndex(string index)
     {
         return connectedClients[int.Parse(index) - 2].Item1;
+    }
+    private string GetPlayerIndexBySocket(Socket socket)
+    {
+        for (int i = 0; i < connectedClients.Count; i++)
+        {
+            if (connectedClients[i].Equals(socket))
+            {
+                return (i + 2).ToString();
+            }
+        }
+        return null;
+    }
+    private void SwapHands()
+    {
+        for (int i = 0; i < clientsNewHands.Count; i++)
+        {
+            if (gameController.GetPlayerObjectByIndex(clientsNewHands[i].Item1).GetComponent<Player>()) // Checking if the player is self/ai or connected client
+            {
+                Player player = gameController.GetPlayerObjectByIndex(clientsNewHands[i].Item1).GetComponent<Player>();
+                List<Card> newDeck = GetDeckFromStringRepresentation(clientsNewHands[i].Item2);
+                player.SetDeck(newDeck);
+            }
+            SendMessageToClient(connectedClients[i].Item1, $"setdeck;{clientsNewHands[i].Item1};{clientsNewHands[i].Item2}");
+        }
+        clientsNewHands.Clear();
+    }
+    private List<Card> GetDeckFromStringRepresentation(string deckRepresentation)
+    {
+        List<Card> deck = new();
+        string[] parts = deckRepresentation.Split(";");
+        for (int i = 0; i < parts.Length; i++)
+        {
+            Card card = null;
+            int num;
+
+            num = int.Parse(parts[i].Substring(0, 2));
+            Enum.TryParse(parts[i].Substring(2), out CardColor color);
+
+            card.SetNumber(num);
+            card.SetColor(color);
+
+            deck.Add(card); 
+        }
+        return deck;
+    }
+    private string GetStringRepresentationFromDeck(List<Card> deck)
+    {
+        string deckString = string.Empty;
+        for (int i = 0; i < deck.Count; i++)
+        {
+            string num = deck[i].GetNumber().ToString(); // 3
+            if (num.Length == 1) { num = "0" + num; } // 03
+            string color = deck[i].GetColor().ToString(); // yellow
+            string cardInfo = num + color; // 03yellow
+
+            deckString += $";{cardInfo}";
+        }
+        return deckString;
+    }
+    /// <summary>
+    /// Only if host played a seven
+    /// </summary>
+    /// <param name="chosenPlayerIndex"></param>
+    public void PlayedSeven(string chosenPlayerIndex)
+    {
+        clientsNewHands.Add((chosenPlayerIndex, GetStringRepresentationFromDeck(new(gameController.selfPlayer.GetDeck()))));
+        if (gameController.GetPlayerObjectByIndex(chosenPlayerIndex).GetComponent<Player>()) // ai
+        {
+            Player aiPlayer = gameController.GetPlayerObjectByIndex(chosenPlayerIndex).GetComponent<Player>();
+            
+            clientsNewHands.Add((gameController.selfPlayer.GetIndex(), GetStringRepresentationFromDeck(new(aiPlayer.GetDeck()))));
+            SwapHands();
+            return;
+        }
+        SendMessageToClient(GetSocketByPlayerIndex(chosenPlayerIndex), $"getdeck;{gameController.selfPlayer.GetIndex()}");
+    }
+    public void PlayedZero()
+    {
+        for (int i = 0; i < connectedClients.Count; i++)
+        {
+            
+        }
     }
 }

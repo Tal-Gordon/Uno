@@ -27,15 +27,20 @@ public class FakePlayer : MonoBehaviour, IPlayer
 
     public Card DrawCard()
     {
-        Card instantiatedCard = Instantiate(cardObject, transform.Find("Cards")).GetComponent<Card>();
-        lock (deck)
+        if (!GetComponent<AIplayer>())
         {
-            deck.Add(instantiatedCard);
-        }
-        // In need of checking
-        Invoke(nameof(UpdateCardsLayout), 0.1f);
+            Card instantiatedCard = Instantiate(cardObject, transform.Find("Cards")).GetComponent<Card>();
+            lock (deck)
+            {
+                deck.Add(instantiatedCard);
+            }
+            instantiatedCard.hidden = true;
+            // In need of checking
+            Invoke(nameof(UpdateCardsLayout), 0.1f);
 
-        return instantiatedCard;
+            return instantiatedCard; 
+        }
+        return GetComponent<Player>().DrawCard();
     }
     public void FinishTurn(Card card)
     {

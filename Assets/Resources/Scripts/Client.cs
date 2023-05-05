@@ -361,22 +361,35 @@ public class Client : MonoBehaviour
             }
             case "getdeck":
             {
-                string message = "senddeck";
+                string callingPlayerIndex = parts[1];
+                string message = $"senddeck;{callingPlayerIndex}";
                 List<Card> deck = new(gameController.selfPlayer.GetDeck());
-                for (int i = 0; i < deck.Count; i++)
-                {
-                    string num = deck[i].GetNumber().ToString(); // 3
-                    if (num.Length == 1) { num = "0" + num; } // 03
-                    string color = deck[i].GetColor().ToString(); // yellow
-                    string cardInfo = num + color; // 03yellow
-
-                    message += $";{cardInfo}";
-                }
+                message += GetStringRepresentationFromDeck(deck);
                 return message;
             }
-            case "senddeck":
+            //case "senddeck":
+            //{
+            //    string playerIndex = parts[1];
+            //    List<Card> deck = new();
+            //    for (int i = 2; i < parts.Length; i++) // Skipping the command and the index; expected input example: 03yellow
+            //    {
+            //        Card card = null;
+            //        int num;
+
+            //        num = int.Parse(parts[i].Substring(0, 2));
+            //        Enum.TryParse(parts[i].Substring(2), out CardColor color);
+
+            //        card.SetNumber(num);
+            //        card.SetColor(color);
+
+            //        deck.Add(card);
+            //    }
+            //    gameController.SwapHands(gameController.selfPlayer.GetIndex(), deck);
+            //    return string.Empty;
+            //}
+            case "setdeck":
             {
-                string playerIndex = parts[1];
+                string playerToSet = parts[1];
                 List<Card> deck = new();
                 for (int i = 2; i < parts.Length; i++) // Skipping the command and the index; expected input example: 03yellow
                 {
@@ -391,7 +404,7 @@ public class Client : MonoBehaviour
 
                     deck.Add(card);
                 }
-                gameController.SwapHands(gameController.selfPlayer.GetIndex(), deck); 
+                gameController.GetIPlayerByIndex(playerToSet).SetDeck(deck);
                 return string.Empty;
             }
             default:
@@ -484,12 +497,41 @@ public class Client : MonoBehaviour
 
         SendMessageToServer(message);
     }
-    public void GetPlayerDeck(string playerIndex)
+    public void PlayedSeven(string chosenPlayerIndex)
     {
-        SendMessageToServer($"getdeck;{playerIndex}");
+        SendMessageToServer($"getdeck;{chosenPlayerIndex};{GetStringRepresentationFromDeck(gameController.selfPlayer.GetDeck())}");
     }
-    public void SwapHands(string chosenPlayerIndex)
+    private List<Card> GetDeckFromStringRepresentation(string deckRepresentation)
     {
-        SendMessageToServer($"getdeck;{chosenPlayerIndex}");
+        List<Card> deck = new();
+        string[] parts = deckRepresentation.Split(";");
+        for (int i = 0; i < parts.Length; i++)
+        {
+            Card card = null;
+            int num;
+
+            num = int.Parse(parts[i].Substring(0, 2));
+            Enum.TryParse(parts[i].Substring(2), out CardColor color);
+
+            card.SetNumber(num);
+            card.SetColor(color);
+
+            deck.Add(card);
+        }
+        return deck;
+    }
+    private string GetStringRepresentationFromDeck(List<Card> deck)
+    {
+        string deckString = string.Empty;
+        for (int i = 0; i < deck.Count; i++)
+        {
+            string num = deck[i].GetNumber().ToString(); // 3
+            if (num.Length == 1) { num = "0" + num; } // 03
+            string color = deck[i].GetColor().ToString(); // yellow
+            string cardInfo = num + color; // 03yellow
+
+            deckString += $";{cardInfo}";
+        }
+        return deckString;
     }
 }
