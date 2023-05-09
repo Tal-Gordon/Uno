@@ -21,12 +21,12 @@ public class Server : MonoBehaviour
     public string serverPassword;
     public bool active = false; // Used by Game Controller to distinguish between host and clients
     // Special rules settings
-    public bool stacking = true;
-    public bool sevenZero = true;
-    public bool jumpIn = true;
-    public bool forcePlay = true;
+    public bool stacking = false;
+    public bool sevenZero = false;
+    public bool jumpIn = false;
+    public bool forcePlay = false;
     public bool noBluffing = false;
-    public bool drawToMatch = true;
+    public bool drawToMatch = false;
 
     private Socket multicastServer;
     private Socket server;
@@ -322,8 +322,16 @@ public class Server : MonoBehaviour
 
                 if ((topCardNum == 7 && amountOfHandsRegistered == 2) || (topCardNum == 0 && amountOfHandsRegistered == 4))
                 {
-                    SwapHands();
+                    SetNewHands();
                 }
+                return string.Empty;
+            }
+            case "drawedcard":
+            {
+                string drawingPlayerIndex = GetPlayerIndexBySocket(socket);
+                InformClients($"drawedcard;{drawingPlayerIndex}");
+                gameController.GetIPlayerByIndex(drawingPlayerIndex).DrawCard();
+
                 return string.Empty;
             }
             default:
@@ -468,20 +476,20 @@ public class Server : MonoBehaviour
         }
         return null;
     }
-    private void SwapHands()
+    private void SetNewHands()
     {
         for (int i = 0; i < clientsNewHands.Count; i++)
         {
-            if (gameController.GetPlayerObjectByIndex(clientsNewHands[i].Item1).GetComponent<Player>()) // Checking if the player is self/ai or connected client
-            {
-                Player player = gameController.GetPlayerObjectByIndex(clientsNewHands[i].Item1).GetComponent<Player>();
-                List<Card> newDeck = GetDeckFromStringRepresentation(clientsNewHands[i].Item2);
-                player.SetDeck(newDeck);
-            }
+            gameController.GetIPlayerByIndex(clientsNewHands[i].Item1).SetDeck(clientsNewHands[i].Item2);
             SendMessageToClient(connectedClients[i].Item1, $"setdeck;{clientsNewHands[i].Item1};{clientsNewHands[i].Item2}");
         }
         clientsNewHands.Clear();
     }
+    /// <summary>
+    /// DO NOT USE, BROKEN
+    /// </summary>
+    /// <param name="deckRepresentation"></param>
+    /// <returns></returns>
     private List<Card> GetDeckFromStringRepresentation(string deckRepresentation)
     {
         List<Card> deck = new();
@@ -489,10 +497,24 @@ public class Server : MonoBehaviour
         for (int i = 0; i < parts.Length; i++)
         {
             Card card = null;
-            int num;
 
-            num = int.Parse(parts[i].Substring(0, 2));
-            Enum.TryParse(parts[i].Substring(2), out CardColor color);
+            if (parts[i].Length < 3)
+            {
+                Debug.LogError($"Invalid input string at index {i}: {parts[i]}");
+                continue; // skip this input string and move on to the next one
+            }
+
+            if (!int.TryParse(parts[i].Substring(0, 2), out int num))
+            {
+                Debug.LogError($"Invalid number at index {i}: {parts[i]}");
+                continue; // skip this input string and move on to the next one
+            }
+
+            if (!Enum.TryParse(parts[i].Substring(2), out CardColor color))
+            {
+                Debug.LogError($"Invalid color at index {i}: {parts[i]}");
+                continue; // skip this input string and move on to the next one
+            }
 
             card.SetNumber(num);
             card.SetColor(color);
@@ -503,7 +525,7 @@ public class Server : MonoBehaviour
     }
     private string GetStringRepresentationFromDeck(List<Card> deck)
     {
-        string deckString = string.Empty;
+        string[] cardInfos = new string[deck.Count];
         for (int i = 0; i < deck.Count; i++)
         {
             string num = deck[i].GetNumber().ToString(); // 3
@@ -511,9 +533,9 @@ public class Server : MonoBehaviour
             string color = deck[i].GetColor().ToString(); // yellow
             string cardInfo = num + color; // 03yellow
 
-            deckString += $";{cardInfo}";
+            cardInfos[i] = cardInfo;
         }
-        return deckString;
+        return string.Join(";", cardInfos);
     }
     /// <summary>
     /// Only if host played a seven
@@ -527,7 +549,7 @@ public class Server : MonoBehaviour
             Player aiPlayer = gameController.GetPlayerObjectByIndex(chosenPlayerIndex).GetComponent<Player>();
             
             clientsNewHands.Add((gameController.selfPlayer.GetIndex(), GetStringRepresentationFromDeck(new(aiPlayer.GetDeck()))));
-            SwapHands();
+            SetNewHands();
             return;
         }
         SendMessageToClient(GetSocketByPlayerIndex(chosenPlayerIndex), $"getdeck;{gameController.selfPlayer.GetIndex()}");

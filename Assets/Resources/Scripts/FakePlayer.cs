@@ -82,4 +82,22 @@ public class FakePlayer : MonoBehaviour, IPlayer
             }
         }
     }
+    public void SetDeck(string deckRepresentation)
+    {
+        int deckDifference = deckRepresentation.Split(';').Length - GetDeck().Count;
+        if (deckDifference > 0)
+        {
+            for (int i = 0; i < deckDifference; i++)
+            {
+                DrawCard();
+            }
+        }
+        else if (deckDifference < 0)
+        {
+            for (int i = 0; i < -deckDifference; i++)
+            {
+                deck[i].DestroyCard();
+            }
+        }
+    }
 }

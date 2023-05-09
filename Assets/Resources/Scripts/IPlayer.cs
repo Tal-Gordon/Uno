@@ -12,4 +12,5 @@ public interface IPlayer
     void ChangeHands();
     List<Card> GetDeck();
     void SetDeck(List<Card> deck);
+    void SetDeck(string deckRepresentation);
 }

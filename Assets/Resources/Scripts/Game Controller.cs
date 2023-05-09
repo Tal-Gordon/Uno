@@ -462,7 +462,7 @@ public class GameController : MonoBehaviour
         IPlayer secondPlayer = GetIPlayerByIndex(playerIndex2);
 
         List<Card> tempDeck = new(firstPlayer.GetDeck()); // We want a clone, not a reference
-        firstPlayer.SetDeck(secondPlayer.GetDeck());
+        firstPlayer.SetDeck((List<Card>)new(secondPlayer.GetDeck()));
         secondPlayer.SetDeck(tempDeck);
     }
     /// <summary>
@@ -473,7 +473,7 @@ public class GameController : MonoBehaviour
     public void SwapHands(string chosenPlayerIndex, List<Card> newDeck) // Method for swapping self deck with other deck
     {
         IPlayer otherPlayer = GetIPlayerByIndex(chosenPlayerIndex);
-        otherPlayer.SetDeck(new(selfPlayer.GetDeck()));
+        otherPlayer.SetDeck((List<Card>)new(selfPlayer.GetDeck()));
         selfPlayer.SetDeck(newDeck);
 
         PlayerFinishedTurn(selfPlayer, null);

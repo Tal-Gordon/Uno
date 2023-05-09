@@ -29,6 +29,13 @@ public class Client : MonoBehaviour
     private readonly string multicastAddress = "239.255.42.99";
     private readonly ushort multicastPort = 15000;
     private string index = string.Empty;
+    // Special rules settings
+    public bool stacking = false;
+    public bool sevenZero = false;
+    public bool jumpIn = false;
+    public bool forcePlay = false;
+    public bool noBluffing = false;
+    public bool drawToMatch = false;
     private void Awake()
     {
         if (Instance != null)
@@ -407,6 +414,16 @@ public class Client : MonoBehaviour
                 gameController.GetIPlayerByIndex(playerToSet).SetDeck(deck);
                 return string.Empty;
             }
+            case "drawedcard":
+            {
+                string drawingPlayerIndex = parts[1];
+                if (drawingPlayerIndex != gameController.selfPlayer.GetIndex())
+                {
+                    gameController.GetIPlayerByIndex(drawingPlayerIndex).DrawCard();
+                }
+
+                return string.Empty;
+            }
             default:
             {
                 // Handle unknown commands
@@ -501,6 +518,11 @@ public class Client : MonoBehaviour
     {
         SendMessageToServer($"getdeck;{chosenPlayerIndex};{GetStringRepresentationFromDeck(gameController.selfPlayer.GetDeck())}");
     }
+    /// <summary>
+    /// DO NOT USE, BROKEN
+    /// </summary>
+    /// <param name="deckRepresentation"></param>
+    /// <returns></returns>
     private List<Card> GetDeckFromStringRepresentation(string deckRepresentation)
     {
         List<Card> deck = new();
@@ -508,10 +530,24 @@ public class Client : MonoBehaviour
         for (int i = 0; i < parts.Length; i++)
         {
             Card card = null;
-            int num;
 
-            num = int.Parse(parts[i].Substring(0, 2));
-            Enum.TryParse(parts[i].Substring(2), out CardColor color);
+            if (parts[i].Length < 3)
+            {
+                Debug.LogError($"Invalid input string at index {i}: {parts[i]}");
+                continue; // skip this input string and move on to the next one
+            }
+
+            if (!int.TryParse(parts[i].Substring(0, 2), out int num))
+            {
+                Debug.LogError($"Invalid number at index {i}: {parts[i]}");
+                continue; // skip this input string and move on to the next one
+            }
+
+            if (!Enum.TryParse(parts[i].Substring(2), out CardColor color))
+            {
+                Debug.LogError($"Invalid color at index {i}: {parts[i]}");
+                continue; // skip this input string and move on to the next one
+            }
 
             card.SetNumber(num);
             card.SetColor(color);
@@ -522,7 +558,7 @@ public class Client : MonoBehaviour
     }
     private string GetStringRepresentationFromDeck(List<Card> deck)
     {
-        string deckString = string.Empty;
+        string[] cardInfos = new string[deck.Count];
         for (int i = 0; i < deck.Count; i++)
         {
             string num = deck[i].GetNumber().ToString(); // 3
@@ -530,8 +566,8 @@ public class Client : MonoBehaviour
             string color = deck[i].GetColor().ToString(); // yellow
             string cardInfo = num + color; // 03yellow
 
-            deckString += $";{cardInfo}";
+            cardInfos[i] = cardInfo;
         }
-        return deckString;
+        return string.Join(";", cardInfos);
     }
 }

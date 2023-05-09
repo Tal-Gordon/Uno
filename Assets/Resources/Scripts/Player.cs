@@ -223,7 +223,32 @@ public class Player : MonoBehaviour, IPlayer
             DrawCard(newDeck[i]);
         }
     }
+    public void SetDeck(string deckRepresentation)
+    {
+        string[] parts = deckRepresentation.Split(";");
+        for (int i = 0; i < parts.Length; i++)
+        {
+            if (parts[i].Length < 3)
+            {
+                Debug.LogError($"Invalid input string at index {i}: {parts[i]}");
+                continue; // skip this input string and move on to the next one
+            }
 
+            if (!int.TryParse(parts[i].Substring(0, 2), out int num))
+            {
+                Debug.LogError($"Invalid number at index {i}: {parts[i]}");
+                continue; // skip this input string and move on to the next one
+            }
+
+            if (!Enum.TryParse(parts[i].Substring(2), out CardColor color))
+            {
+                Debug.LogError($"Invalid color at index {i}: {parts[i]}");
+                continue; // skip this input string and move on to the next one
+            }
+
+            DrawCard(num, color);
+        }
+    }
     private void DrawHand()
     {
         ClearHand();
@@ -277,6 +302,28 @@ public class Player : MonoBehaviour, IPlayer
 
         instantiatedCard.SetNumber(card.GetNumber());
         instantiatedCard.SetColor(card.GetColor());
+
+        // Set name from "Card(Clone)" to meaningful name that represents card properties
+        instantiatedCard.gameObject.name = $"{instantiatedCard.GetNumber()} {instantiatedCard.GetColor()}";
+
+        instantiatedCard.handCard = true;
+        if (aiDriven) { instantiatedCard.hidden = true; }
+
+        instantiatedCard.UpdateTexture();
+        Invoke(nameof(UpdateCardsLayout), 0.1f);
+
+        return instantiatedCard;
+    }
+    private Card DrawCard(int num, CardColor color)
+    {
+        Card instantiatedCard = Instantiate(cardObject, transform.Find(cardsName)).GetComponent<Card>();
+        lock (deck)
+        {
+            deck.Add(instantiatedCard);
+        }
+
+        instantiatedCard.SetNumber(num);
+        instantiatedCard.SetColor(color);
 
         // Set name from "Card(Clone)" to meaningful name that represents card properties
         instantiatedCard.gameObject.name = $"{instantiatedCard.GetNumber()} {instantiatedCard.GetColor()}";
@@ -424,7 +471,8 @@ public class Player : MonoBehaviour, IPlayer
         }
         else
         {
-            gameController.SwapHands(GetIndex(), playerAI.GetActionToDo("Seven"));
+            //gameController.SwapHands(GetIndex(), playerAI.GetActionToDo("Seven"));
+            server.PlayedSeven(playerAI.GetActionToDo("Seven"));
         }
     }
     public void PickPlayerToSwapHands()
