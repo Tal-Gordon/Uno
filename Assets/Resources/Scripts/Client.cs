@@ -142,6 +142,7 @@ public class Client : MonoBehaviour
             catch (Exception e)
             {
                 Debug.LogError(e);
+                break;
             }
         }
     }
@@ -193,7 +194,14 @@ public class Client : MonoBehaviour
     {
         while (true)
         {
-            ProcessSocketReceivedData(multicastClient);
+            try
+            {
+                ProcessSocketReceivedData(multicastClient);
+            }
+            catch
+            {
+                break;
+            }
 
             yield return new WaitForSeconds(1f);
 
@@ -312,7 +320,7 @@ public class Client : MonoBehaviour
             case "disconnect":
             {
                 Debug.LogError("Server closed connection");
-                joinMenuController.DisconnectFromServer();
+                DisconnectFromServer();
 
                 return string.Empty;
             }
@@ -327,32 +335,63 @@ public class Client : MonoBehaviour
                 string player2Username = parts[3];
                 string player3Username = parts[4];
 
-                RenderJoinedServer(hostUsername, player1Username, player2Username, player3Username);
+                if (SceneManager.GetActiveScene().name == "Main Menu")
+                {
+                    RenderJoinedServer(hostUsername, player1Username, player2Username, player3Username); 
+                }
 
                 return string.Empty;
             }
             case "gamestart":
             {
                 index = parts[1];
+                stacking =    parts[2] == "t";
+                sevenZero =   parts[3] == "t";
+                jumpIn =      parts[4] == "t";
+                forcePlay =   parts[5] == "t";
+                noBluffing =  parts[6] == "t";
+                drawToMatch = parts[7] == "t";
                 PrepareForGame();
                 return string.Empty;
             }
             case "playermove":
             {
                 string playerIndex = parts[1];
-                Card playedCard = null;
+                int cardNum = 0;
+                CardColor cardColor = CardColor.Wild;
 
                 if (parts[2] != "null")
                 {
-                    int cardNum = int.Parse(parts[2]);
-                    if (!Enum.TryParse(parts[3], true, out CardColor cardColor))
+                    if (!int.TryParse(parts[2].Substring(0, 2), out cardNum))
                     {
-                        Debug.LogError($"Server sent unknown color: {parts[3]}");
+                        Debug.LogError($"Invalid number: {parts[2].Substring(0, 2)}");
+                        return string.Empty;
                     }
-                    playedCard.SetNumber(cardNum);
-                    playedCard.SetColor(cardColor);
+
+                    if (!Enum.TryParse(parts[2].Substring(2), out cardColor))
+                    {
+                        Debug.LogError($"Invalid color: {parts[2].Substring(2)}");
+                        return string.Empty;
+                    }
+                    try
+                    {
+                        gameController.PlayerFinishedTurn(playerIndex, cardNum, cardColor, false);
+                    }
+                    catch
+                    {
+                        StartCoroutine(TryRegisterPlayerMove(playerIndex, cardNum, cardColor, false));
+                    }
+                    return string.Empty;
                 }
-                gameController.PlayerFinishedTurn(playerIndex, playedCard);
+                try
+                {
+                    StartCoroutine(TryRegisterPlayerMove(playerIndex, cardNum, cardColor, true));
+                }
+                catch (Exception)
+                {
+
+                    throw;
+                }
                 return string.Empty;
             }
             case "calledout":
@@ -360,8 +399,10 @@ public class Client : MonoBehaviour
                 string callingPlayerIndex = parts[1];
                 if (gameController.selfPlayer.GetDeck().Count == 1 && !gameController.selfPlayer.GetUnoed()) 
                 {
-                    gameController.selfPlayer.DrawCard();
-                    gameController.selfPlayer.DrawCard();
+                    for (int i = 0; i < 2; i++)
+                    {
+                        DrawCardFromServer();
+                    }
                 }
                 gameController.selfPlayer.UnshowCallOutButton();
                 return string.Empty;
@@ -424,10 +465,49 @@ public class Client : MonoBehaviour
 
                 return string.Empty;
             }
+            case "drawcard":
+            {
+                string cardInfo = parts[1];
+
+                if (!int.TryParse(cardInfo.Substring(0, 2), out int num))
+                {
+                    Debug.LogError($"Invalid number: {cardInfo.Substring(0, 2)}");
+                    return string.Empty;
+                }
+
+                if (!Enum.TryParse(cardInfo.Substring(2), out CardColor color))
+                {
+                    Debug.LogError($"Invalid color {cardInfo.Substring(2)}");
+                    return string.Empty; 
+                }
+                gameController.selfPlayer.DrawCard(num, color);
+
+                return string.Empty;
+            }
+            case "drawhand":
+            {
+                for (int i = 1; i < 8; i++)
+                {
+                    if (!int.TryParse(parts[i].Substring(0, 2), out int num))
+                    {
+                        Debug.LogError($"Invalid number: {parts[i].Substring(0, 2)}");
+                        return string.Empty;
+                    }
+
+                    if (!Enum.TryParse(parts[i].Substring(2), out CardColor color))
+                    {
+                        Debug.LogError($"Invalid color {parts[i].Substring(2)}");
+                        return string.Empty;
+                    }
+                    gameController.selfPlayer.DrawCard(num, color);
+                }
+                return string.Empty;
+            }
             default:
             {
                 // Handle unknown commands
                 Debug.LogError($"Server sent unknown command: {command}");
+                DisconnectFromServer();
                 return string.Empty;
             }
         }
@@ -488,24 +568,46 @@ public class Client : MonoBehaviour
 // -------------------------------------------------------------------------------------------------------------------------------------------------------------------
     private void PrepareForGame()
     {
+        StopCoroutine(CheckAliveServers());
         SceneManager.LoadScene("Game");
         SceneManager.activeSceneChanged += ChangedScene;
-
     }
     private void ChangedScene(Scene current, Scene next)
     {
         GameObject[] roots = next.GetRootGameObjects();
         for (int i = 0; i < roots.Length; i++)
         {
-            if (roots[i].TryGetComponent(out gameController)) { gameController.IndexPlayers(index); break; }
+            if (roots[i].TryGetComponent(out gameController)) 
+            { 
+                gameController.IndexPlayers(index);
+
+                gameController.stacking = stacking;
+                gameController.sevenZero = sevenZero;
+                gameController.jumpIn = jumpIn;
+                gameController.forcePlay = forcePlay;
+                gameController.noBluffing = noBluffing;
+                gameController.drawToMatch = drawToMatch;
+
+                StartNewGame();
+                break; 
+            }
         }
+    }
+    public void StartNewGame()
+    {
+        StartCoroutine(gameController.LateStart(0.5f));
     }
     public void PlayerMadeMove(Card playedCard)
     {
         string message = $"playermove;{gameController.selfPlayer.GetIndex()};";
         if (playedCard != null)
         {
-            message += $"{playedCard.GetNumber()};{playedCard.GetColor()}";
+            string num = playedCard.GetNumber().ToString(); // 3
+            string color = playedCard.GetColor().ToString(); // yellow
+            if (num.Length == 1) { num = "0" + num; } // 03
+            string cardInfo = num + color; // 03yellow
+
+            message += $"{cardInfo}";
         }
         else
         {
@@ -569,5 +671,18 @@ public class Client : MonoBehaviour
             cardInfos[i] = cardInfo;
         }
         return string.Join(";", cardInfos);
+    }
+    public void DrawCardFromServer()
+    {
+        SendMessageToServer($"drawcard;{gameController.selfPlayer.GetIndex()}");
+    }
+    public void DrawHand()
+    {
+        SendMessageToServer($"drawhand");
+    }
+    private IEnumerator TryRegisterPlayerMove(string playerIndex, int cardNum, CardColor cardColor, bool _null)
+    {
+        yield return new WaitForSeconds(1.1f);
+        gameController.PlayerFinishedTurn(playerIndex, cardNum, cardColor, _null);
     }
 }

@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using TMPro;
 using Unity.VisualScripting;
 using UnityEngine;
+using UnityEngine.UI;
 
 public class HostMenuController : MonoBehaviour
 {
@@ -70,5 +71,45 @@ public class HostMenuController : MonoBehaviour
     public void StartGame()
     {
         server.StartGame();
+    }
+    public void HouseRulesToggles()
+    {
+        GameObject toggle = UnityEngine.EventSystems.EventSystem.current.currentSelectedGameObject;
+        Color newColor = toggle.GetComponent<Toggle>().isOn ? Color.green : Color.red;
+        toggle.GetComponent<Image>().color = newColor;
+
+        switch (toggle.name)
+        {
+            case "Stacking":
+            {
+                server.stacking = !server.stacking;
+                break;
+            }
+            case "7-0":
+            {
+                server.sevenZero = !server.sevenZero;
+                break;
+            }
+            case "Jump-In":
+            {
+                server.jumpIn = !server.jumpIn; 
+                break;
+            }
+            case "Force Play":
+            {
+                server.forcePlay = !server.forcePlay;
+                break;
+            }
+            case "No Bluffing":
+            {
+                server.noBluffing = !server.noBluffing;
+                break;
+            }
+            case "Draw-To-Match":
+            {
+                server.drawToMatch = !server.drawToMatch;
+                break;
+            }
+        }
     }
 }

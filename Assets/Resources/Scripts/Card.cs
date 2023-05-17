@@ -28,16 +28,16 @@ public class Card : MonoBehaviour
     private static Sprite[] cardSpriteSheet;
 
     private bool mouseEnteredCard = false;
-
-    void Start()
+    void Awake()
     {
+        cardSpriteSheet = Resources.LoadAll<Sprite>("Graphics/Cards");
         boxCollider = GetComponent<BoxCollider2D>();
         cardSprite = GetComponent<SpriteRenderer>();
-
+    }
+    void Start()
+    {
         boxCollider.size = new Vector2(cardSprite.size.x, cardSprite.size.y);
         boxCollider.offset = new Vector2(cardSprite.size.x/2, 0);
-
-        cardSpriteSheet = Resources.LoadAll<Sprite>("Graphics/Cards");
 
         UpdateTexture();
 

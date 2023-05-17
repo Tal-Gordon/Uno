@@ -16,12 +16,12 @@ public class GameController : MonoBehaviour
     public static Dictionary<string, ((int, CardColor), int)> gameCards = new();
     public bool directionClockwise = true;
     // Special rules settings
-    public bool stacking = true;
-    public bool sevenZero = true;
-    public bool jumpIn = true;
-    public bool forcePlay = true;
+    public bool stacking = false;
+    public bool sevenZero = false;
+    public bool jumpIn = false;
+    public bool forcePlay = false;
     public bool noBluffing = false;
-    public bool drawToMatch = true;
+    public bool drawToMatch = false;
     public int stacked = 0;
 
     private Server server;
@@ -32,7 +32,7 @@ public class GameController : MonoBehaviour
     private void Awake()
     {
         server = Server.Instance; client = Client.Instance;
-        if (true || server.active) // Remove later
+        if (server.active)
         {
             gameCards = new Dictionary<string, ((int, CardColor), int)> // Card name identifier, card internal representation, available amount
             {
@@ -101,13 +101,11 @@ public class GameController : MonoBehaviour
     {
         topCard = transform.Find("Discard pile").GetComponent<Card>();
 
-        RegeneratePlayersList();
+        //RegeneratePlayersList();
         selfPlayer = transform.Find("Player stands").GetChild(0).GetComponent<Player>();
 
         directionArrows = transform.Find("Direction Arrows").gameObject;
         directionArrows.GetComponent<Animator>().runtimeAnimatorController = Resources.Load("Miscellaneous/Animations/DirectionArrows") as RuntimeAnimatorController;
-
-        //StartCoroutine(LateStart(0.5f)); // Remove later
     }
     public IEnumerator LateStart(float waitTime)
     {
@@ -130,18 +128,22 @@ public class GameController : MonoBehaviour
         SetTopCard(topCardRandomNumber, topCardRandomColor);
         UpdateTopCard();
         Debug.Log($"game starts with card {GetTopCard().GetNumber()} {GetTopCard().GetColor()}");
+        RegeneratePlayersList();
 
         for (int i = 0; i < players.Count; i++)
         {
-            try
-            {
-                players[i].StartNewGame();
-            }
-            catch (MissingReferenceException)
-            {
-                RegeneratePlayersList();
-                players[i].StartNewGame();
-            }
+            //if ((server.active && players[i] is Player) || client.active)
+            //{
+                try
+                {
+                    players[i].StartNewGame();
+                }
+                catch
+                {
+                    RegeneratePlayersList();
+                    players[i].StartNewGame();
+                }
+            //}
         }
         //var firstPlayer = players.FirstOrDefault(player => player.GetIndex() == "1");
         //if (firstPlayer != null)
@@ -218,6 +220,10 @@ public class GameController : MonoBehaviour
             int skipModifier = 0;
             bool abortMethod = false; // Should only be true if awaiting additional input from player
             bool playerYetToUno = false;
+            for (int i = 0; i < players.Count; i++)
+            {
+                players[i].FinishTurn(null); // Fix for stray turn
+            }
 
             if (playedCard != null)
             {
@@ -231,7 +237,7 @@ public class GameController : MonoBehaviour
                         skipModifier = directionClockwise ? 1 : -1;
                     }
                     //  Additional input is required from the player, or from the next. Game should wait before giving next player turn, instead when finished player will call the method again with a null card
-                    if (playedCard.GetNumber() == 7) // || (stacking && (playedCard.GetNumber() is 11 or 15))) Remove later
+                    if (sevenZero && playedCard.GetNumber() == 7) // || (stacking && (playedCard.GetNumber() is 11 or 15))) Remove later
                     {
                         abortMethod = true;
                     }
@@ -279,7 +285,10 @@ public class GameController : MonoBehaviour
             {
                 string nextPlayerIndex = GetNextPlayerIndex((int.Parse(player.GetIndex()) + skipModifier).ToString());
                 //if (nextPlayerIndex == selfPlayer.GetIndex()) { Invoke(nameof(selfPlayer.GetTurnAndCheckCards), 1f); }
-                if (nextPlayerIndex == selfPlayer.GetIndex()) { selfPlayer.Invoke("GetTurnAndCheckCards", 1f); }
+                if (GetIPlayerByIndex(nextPlayerIndex) is Player) 
+                {
+                    ((Player)GetIPlayerByIndex(nextPlayerIndex)).Invoke("GetTurnAndCheckCards", 1f); 
+                }
 
                 //for (int i = 0; i < players.Count; i++)
                 //{
@@ -299,9 +308,17 @@ public class GameController : MonoBehaviour
             Debug.LogError(e);
         }
     }
-    public void PlayerFinishedTurn(string playerIndex, Card playedCard)
+    public void PlayerFinishedTurn(string playerIndex, int cardNum, CardColor cardColor, bool _null)
     {
-        PlayerFinishedTurn(GetIPlayerByIndex(playerIndex), playedCard);
+        if (!_null)
+        {
+            SetTopCard(cardNum, cardColor);
+            PlayerFinishedTurn(GetIPlayerByIndex(playerIndex), GetTopCard()); 
+        }
+        else
+        {
+            PlayerFinishedTurn(GetIPlayerByIndex(playerIndex), null);
+        }
     }
 
     public void CalledOutUnunoed(string callingPlayerIndex) 
@@ -348,16 +365,27 @@ public class GameController : MonoBehaviour
             }
             case 11: // draw 2
             {
-                //if (stacking)
-                //{
-                //    StackCard(playerIndex, card);
-                //}
-                //else
-                //{
-                //    string nextPlayerIndex = GetNextPlayerIndex(playerIndex);
-                //    ForceDrawCards(GetIPlayerByIndex(nextPlayerIndex), 2);
-                //}
-                // TODO
+                if (stacking)
+                {
+                    //StackCard(playerIndex, card);
+                }
+                else
+                {
+                    if (GetIPlayerByIndex(GetNextPlayerIndex(playerIndex)).Equals(selfPlayer) && client.active)
+                    {
+                        for (int i = 0; i < 2; i++)
+                        {
+                            client.DrawCardFromServer();
+                        }
+                    }
+                    else
+                    {
+                        for (int i = 0; i < 2; i++)
+                        {
+                            GetIPlayerByIndex(GetNextPlayerIndex(playerIndex)).DrawCard();
+                        }
+                    }
+                }
                 return true;
             }
             case 12: // skip
@@ -393,20 +421,31 @@ public class GameController : MonoBehaviour
                     return false;
                 }
                 // Second part of play
-                
-                //if (stacking)
-                //{
-                //    StackCard(playerIndex, card);
-                //}
-                //else
-                //{
-                //    if (noBluffing)
-                //    {
-                //        string nextPlayerIndex = GetNextPlayerIndex(playerIndex);
-                //        ForceDrawCards(GetIPlayerByIndex(nextPlayerIndex), 4); 
-                //    }
-                //}
-                // TODO
+
+                if (stacking)
+                {
+                    //StackCard(playerIndex, card);
+                }
+                else
+                {
+                    if (noBluffing)
+                    {
+                        if (GetIPlayerByIndex(GetNextPlayerIndex(playerIndex)).Equals(selfPlayer) && client.active)
+                        {
+                            for (int i = 0; i < 4; i++)
+                            {
+                                client.DrawCardFromServer();
+                            }
+                        }
+                        else
+                        {
+                            for (int i = 0; i < 4; i++)
+                            {
+                                GetIPlayerByIndex(GetNextPlayerIndex(playerIndex)).DrawCard();
+                            }
+                        }
+                    }
+                }
                 return true;
             }
         }
@@ -420,7 +459,15 @@ public class GameController : MonoBehaviour
         {
             //if (selfPlayerBool && players[i] is Player) { return (Player)players[i]; }
             //else if (!selfPlayerBool && players[i] is FakePlayer) { return (FakePlayer)players[i]; }
-            if (players[i].GetIndex() == index) { return players[i]; }
+            try
+            {
+                if (players[i].GetIndex() == index) { return players[i]; }
+            }
+            catch
+            {
+                RegeneratePlayersList();
+                if (players[i].GetIndex() == index) { return players[i]; }
+            }
         }
         return null;
     }
@@ -435,15 +482,16 @@ public class GameController : MonoBehaviour
     }
     public int GetPlayerNumOfCardsByIndex(string index)
     {
-        for (int i = 0; i < players.Count; i++)
-        {
-            GameObject player = transform.Find("Player stands").GetChild(i).gameObject;
-            if (player.name.Split(' ').Last() == index)
-            {
-                return player.transform.GetChild(0).childCount;
-            }
-        }
-        return -1;
+        //for (int i = 0; i < players.Count; i++)
+        //{
+        //    GameObject player = transform.Find("Player stands").GetChild(i).gameObject;
+        //    if (player.name.Split(' ').Last() == index)
+        //    {
+        //        return player.transform.GetChild(0).childCount;
+        //    }
+        //}
+        return GetIPlayerByIndex(index).GetDeck().Count;
+        //return -1;
     }
     private void ChangeDirection()
     {

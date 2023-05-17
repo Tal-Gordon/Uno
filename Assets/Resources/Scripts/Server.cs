@@ -9,7 +9,6 @@ using System.Net.Sockets;
 using System.Threading;
 using System.Linq;
 using Unity.VisualScripting;
-using UnityEditor.VersionControl;
 
 public class Server : MonoBehaviour
 {
@@ -247,19 +246,27 @@ public class Server : MonoBehaviour
             case "playermove":
             {
                 string playerIndex = parts[1];
-                Card playedCard = null;
+                int cardNum = 0;
+                CardColor cardColor = CardColor.Wild;
 
                 if (parts[2] != "null")
                 {
-                    int cardNum = int.Parse(parts[2]);
-                    if (!Enum.TryParse(parts[3], true, out CardColor cardColor))
+                    if (!int.TryParse(parts[2].Substring(0, 2), out cardNum))
                     {
-                        Debug.LogError($"Server sent unknown color: {parts[3]}");
+                        Debug.LogError($"Invalid number: {parts[2].Substring(0, 2)}");
+                        return string.Empty;
                     }
-                    playedCard.SetNumber(cardNum);
-                    playedCard.SetColor(cardColor);
+
+                    if (!Enum.TryParse(parts[2].Substring(2), out cardColor))
+                    {
+                        Debug.LogError($"Invalid color: {parts[2].Substring(2)}");
+                        return string.Empty;
+                    }
+
+                    gameController.PlayerFinishedTurn(playerIndex, cardNum, cardColor, false);
+                    return string.Empty;
                 }
-                gameController.PlayerFinishedTurn(playerIndex, playedCard);
+                gameController.PlayerFinishedTurn(playerIndex, cardNum, cardColor, true);
                 InformClients(data);
                 return string.Empty;
             }
@@ -326,18 +333,42 @@ public class Server : MonoBehaviour
                 }
                 return string.Empty;
             }
-            case "drawedcard":
+            case "drawcard":
             {
-                string drawingPlayerIndex = GetPlayerIndexBySocket(socket);
-                InformClients($"drawedcard;{drawingPlayerIndex}");
-                gameController.GetIPlayerByIndex(drawingPlayerIndex).DrawCard();
+                string drawingPlayerIndex = parts[1];
+                StartCoroutine(InformClientsLater($"drawedcard;{drawingPlayerIndex}")); // hardfix
+                StartCoroutine(TryRegisterPlayerDraw(drawingPlayerIndex));
 
-                return string.Empty;
+                (int, CardColor) drawedCard = gameController.DrawCard();
+
+                string num = drawedCard.Item1.ToString(); // 3
+                if (num.Length == 1) { num = "0" + num; } // 03
+                string color = drawedCard.Item2.ToString(); // yellow
+                string cardInfo = num + color; // 03yellow
+
+                return $"drawcard;{cardInfo}";
+            }
+            case "drawhand":
+            {
+                string message = "drawhand";
+                for (int i = 0; i < 7; i++)
+                {
+                    (int, CardColor) drawedCard = gameController.DrawCard();
+
+                    string num = drawedCard.Item1.ToString(); // 3
+                    if (num.Length == 1) { num = "0" + num; } // 03
+                    string color = drawedCard.Item2.ToString(); // yellow
+                    string cardInfo = num + color; // 03yellow
+
+                    message += $";{cardInfo}";
+                }
+                return message;
             }
             default:
             {
                 // Handle unknown commands
                 Debug.LogError($"Client {socket} sent unknown command: {command}");
+                DisconnectClient(socket);
                 return string.Empty;
             }
         }
@@ -353,6 +384,13 @@ public class Server : MonoBehaviour
 
     public void DisconnectClient(Socket client)
     {
+        if (SceneManager.GetActiveScene().name == "Game")
+        {
+            GameObject playerObject = gameController.GetPlayerObjectByIndex(GetPlayerIndexBySocket(client));
+            Destroy(playerObject.GetComponent<FakePlayer>());
+            playerObject.GetOrAddComponent<Player>().aiDriven = true;
+            playerObject.GetComponent<Player>().playerName = "AI Player";
+        }
         for (int i = 0; i < connectedClients.Count; i++)
         {
             if (connectedClients[i].Item1 == client)
@@ -386,10 +424,16 @@ public class Server : MonoBehaviour
     public void StartGame()
     {
         StopCoroutine(SendMessageToMulticastGroup());
+        string _stacking = stacking ?       "t" : "f";
+        string _sevenZero = sevenZero ?     "t" : "f";
+        string _jumpIn = jumpIn ?           "t" : "f";
+        string _forcePlay = forcePlay ?     "t" : "f";
+        string _noBluffing = noBluffing ?   "t" : "f";
+        string _drawToMatch = drawToMatch ? "t" : "f";
 
         for (int i = 0; i < connectedClients.Count; i++)
         {
-            SendMessageToClient(connectedClients[i].Item1, $"gamestart;{i + 2}"); // We account for the zero-based index and begin counting at 2, because host is always 1
+            SendMessageToClient(connectedClients[i].Item1, $"gamestart;{i + 2};{_stacking};{_sevenZero};{_jumpIn};{_forcePlay};{_noBluffing};{_drawToMatch}"); // We account for the zero-based index and begin counting at 2, because host is always 1
         }
         SceneManager.LoadScene("Game");
         SceneManager.activeSceneChanged += ChangedScene;
@@ -406,13 +450,18 @@ public class Server : MonoBehaviour
                     for (int j = 4; (4 - j) < (3 - connectedClients.Count); j--)
                     {
                         GameObject playerObject = gameController.GetPlayerObjectByIndex(j.ToString());
-                        //Destroy(playerObject.GetComponent<FakePlayer>());
                         Destroy(playerObject.GetComponent<FakePlayer>());
                         playerObject.GetOrAddComponent<Player>().aiDriven = true;
                         playerObject.GetComponent<Player>().playerName = "AI Player";
                     }
                 }
-                StartNewGame();
+                gameController.stacking = stacking;
+                gameController.sevenZero = sevenZero;
+                gameController.jumpIn = jumpIn;
+                gameController.forcePlay = forcePlay;
+                gameController.noBluffing = noBluffing;
+                gameController.drawToMatch = drawToMatch;
+                StartCoroutine(StartNewGame());
                 break; 
             }
         }
@@ -424,7 +473,12 @@ public class Server : MonoBehaviour
 
         if (playedCard != null)
         {
-            message += $"{playedCard.GetNumber()};{playedCard.GetColor()}";
+            string num = playedCard.GetNumber().ToString(); // 3
+            if (num.Length == 1) { num = "0" + num; } // 03
+            string color = playedCard.GetColor().ToString(); // yellow
+            string cardInfo = num + color; // 03yellow
+
+            message += $"{cardInfo}";
         }
         else
         {
@@ -432,16 +486,52 @@ public class Server : MonoBehaviour
         }
 
         InformClients(message);
-        GameObject nextPlayer = gameController.GetPlayerObjectByIndex(gameController.GetNextPlayerIndex(playerIndex));
-        if (nextPlayer.GetComponent<Player>()) // Either self or ai player
-        {
-            Debug.Log($"server orders player {nextPlayer.GetComponent<Player>().GetIndex()} to play");
-            nextPlayer.GetComponent<Player>().GetTurnAndCheckCards();
-        }
+
+        //GameObject nextPlayer = gameController.GetPlayerObjectByIndex(gameController.GetNextPlayerIndex(playerIndex));
+        //bool inputRequired = false; // Set to true if additional input is required from the player
+        //if (playedCard != null)
+        //{
+        //    switch (playedCard.GetNumber())
+        //    {
+        //        case 7:
+        //        {
+        //            if (sevenZero)
+        //            {
+        //                inputRequired = true;
+        //            }
+        //            break;
+        //        }
+        //        case 14:
+        //        case 15:
+        //        {
+        //            if (playedCard.GetColor() == CardColor.Wild)
+        //            {
+        //                inputRequired = true;
+        //            }
+        //            break;
+        //        }
+        //    } 
+        //}
+        //if (nextPlayer.GetComponent<Player>() && nextPlayer.GetComponent<Player>().GetDeck().Count > 0 && !inputRequired) // Either self or ai player
+        //{
+        //    Debug.Log($"server orders player {nextPlayer.GetComponent<Player>().GetIndex()} to play");
+        //    if (nextPlayer.GetComponent<Player>().aiDriven)
+        //    {
+        //        StartCoroutine(GiveTurnToAI(nextPlayer.GetComponent<Player>()));
+        //        return;
+        //    }
+        //    nextPlayer.GetComponent<Player>().GetTurnAndCheckCards();
+        //}
         // No need to explicitly order clients to play, they should know to give themselves a turn when it's due
     }
-    public void StartNewGame()
+    //private IEnumerator GiveTurnToAI(Player player)
+    //{
+    //    yield return new WaitForSeconds(1f);
+    //    player.GetTurnAndCheckCards();
+    //}
+    public IEnumerator StartNewGame()
     {
+        yield return new WaitForSeconds(0.5f);
         StartCoroutine(gameController.LateStart(0.5f));
     }
     public void CalledOutUnunoed(string callingPlayerIndex)
@@ -537,10 +627,6 @@ public class Server : MonoBehaviour
         }
         return string.Join(";", cardInfos);
     }
-    /// <summary>
-    /// Only if host played a seven
-    /// </summary>
-    /// <param name="chosenPlayerIndex"></param>
     public void PlayedSeven(string chosenPlayerIndex)
     {
         clientsNewHands.Add((chosenPlayerIndex, GetStringRepresentationFromDeck(new(gameController.selfPlayer.GetDeck()))));
@@ -560,5 +646,19 @@ public class Server : MonoBehaviour
         {
             
         }
+    }
+    public void DrawedCard()
+    {
+        InformClients($"drawedcard;{gameController.selfPlayer.GetIndex()}");
+    }
+    private IEnumerator InformClientsLater(string message)
+    {
+        yield return new WaitForSeconds(1f);
+        InformClients(message);
+    }
+    private IEnumerator TryRegisterPlayerDraw(string drawingPlayerIndex)
+    {
+        yield return new WaitForSeconds(1.1f);
+        gameController.GetIPlayerByIndex(drawingPlayerIndex).DrawCard();
     }
 }

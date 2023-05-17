@@ -2,9 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using TMPro;
-using UnityEditor.PackageManager;
 using UnityEngine;
-using UnityEngine.UIElements;
 
 public class FakePlayer : MonoBehaviour, IPlayer
 {
@@ -27,7 +25,7 @@ public class FakePlayer : MonoBehaviour, IPlayer
 
     public Card DrawCard()
     {
-        if (!GetComponent<AIplayer>())
+        if (!gameObject.GetComponent<AIplayer>())
         {
             Card instantiatedCard = Instantiate(cardObject, transform.Find("Cards")).GetComponent<Card>();
             lock (deck)
@@ -44,16 +42,34 @@ public class FakePlayer : MonoBehaviour, IPlayer
     }
     public void FinishTurn(Card card)
     {
-        deck[Random.Range(0, deck.Count - 1)].GetComponent<Card>().DestroyCard();
+        if (card != null)
+        {
+            try
+            {
+                deck[Random.Range(0, deck.Count - 1)].GetComponent<Card>().DestroyCard();
+                Invoke(nameof(UpdateCardsLayout), 0.1f);
+            }
+            catch // deck might still be uninitialized 
+            {
+                StartCoroutine(TryFinishTurnAgain(card));
+            } 
+        }
+    }
+    private IEnumerator TryFinishTurnAgain(Card card)
+    {
+        yield return new WaitForSeconds(1.1f);
+        FinishTurn(card);
     }
     public void StartNewGame()
     {
+        deck.Clear();
+        transform.GetChild(0).GetComponent<HandLayout>().ClearDeck();
         for (int i = 0; i < 7; i++)
         {
             DrawCard();
         }
     }
-    public string GetIndex() { return name.Split(' ').Last(); }
+    public string GetIndex() { return gameObject.name.Split(' ').Last(); }
     public void SetGameobjectName(string name) { gameObject.name = name; }
     private void UpdateCardsLayout()
     {

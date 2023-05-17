@@ -8,6 +8,7 @@ using TMPro;
 public class MainMenu : MonoBehaviour
 {
     public GameObject connectionMenu;
+    public GameObject settingsMenu;
     public GameObject hostMenu;
     public GameObject joinMenu;
     public GameObject ServerCreationMenu;
@@ -38,7 +39,9 @@ public class MainMenu : MonoBehaviour
     public void Singleplayer() 
     {
         MainMenuCardColor.color = new Color32(234, 201, 0, 255); //Yellow
-        SceneManager.LoadScene(gameSceneName);
+        Server server = Server.Instance;
+        server.ManualStart();
+        server.StartGame();
     }
     public void Multiplayer()
     {
@@ -47,6 +50,7 @@ public class MainMenu : MonoBehaviour
     }
     public void Settings()
     {
+        settingsMenu.SetActive(true);
         MainMenuCardColor.color = new Color32(2, 95, 168, 255); //Blue
     }
     public void Exit()

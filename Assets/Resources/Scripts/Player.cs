@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using TMPro;
@@ -104,30 +105,67 @@ public class Player : MonoBehaviour, IPlayer
     }
     public void DrawCardsLogic()
     {
-        if (!stackPotential)
+        if (server.active)
         {
-            Card drawedCard;
-            if (gameController.drawToMatch)
+            if (!stackPotential)
             {
-                // We want to draw at least one card
-                do
+                Card drawedCard;
+                if (gameController.drawToMatch)
                 {
-                    drawedCard = DrawCard();
-                } while (!GetCardPlayable(drawedCard));
+                    // We want to draw at least one card
+                    do
+                    {
+                        drawedCard = DrawCard();
+                    } while (!GetCardPlayable(drawedCard));
 
-                if (gameController.forcePlay) { gameController.PlayerFinishedTurn(this, drawedCard); return; }
-                else { ShowKeepPlayButtons(drawedCard); }
+                    if (gameController.forcePlay) { gameController.PlayerFinishedTurn(this, drawedCard); return; }
+                    else { ShowKeepPlayButtons(drawedCard); }
+                }
+                else { DrawCard(); }
             }
-            else { DrawCard(); }
-        }
-        else
-        {
-            for (int i = 0; i < gameController.stacked; i++)
+            else
             {
-                DrawCard();
+                //for (int i = 0; i < gameController.stacked; i++)
+                //{
+                //    DrawCard();
+                //}
+            }
+            server.DrawedCard();
+        }
+        else if (client.active)
+        {
+            if (!stackPotential)
+            {
+                Card drawedCard;
+                if (gameController.drawToMatch)
+                {
+                    // We want to draw at least one card
+                    do
+                    {
+                        drawedCard = DrawCard();
+                    } while (!GetCardPlayable(drawedCard));
+
+                    if (gameController.forcePlay) { gameController.PlayerFinishedTurn(this, drawedCard); return; }
+                    else { ShowKeepPlayButtons(drawedCard); }
+                }
+                else
+                {
+                    client.DrawCardFromServer();
+                }
+            }
+            else
+            {
+                //for (int i = 0; i < gameController.stacked; i++)
+                //{
+                //    DrawCard();
+                //}
             }
         }
         SkipTurn();
+    }
+    public void GotCardFromServer()
+    {
+
     }
     public void GetTurnAndCheckCards()
     {
@@ -170,18 +208,21 @@ public class Player : MonoBehaviour, IPlayer
     {
         canPlay = false;
 
-        lock (deck)
+        if (playedCard != null)
         {
-            for (int i = 0; i < deck.Count; i++)
+            lock (deck)
             {
-                deck[i].canPlay = false;
-                if (deck[i].Equals(playedCard))
+                for (int i = 0; i < deck.Count; i++)
                 {
-                    deck.RemoveAt(i);
-                    playedCard.DestroyCard();
-                    Invoke(nameof(UpdateCardsLayout), 0.1f);
+                    deck[i].canPlay = false;
+                    if (deck[i].Equals(playedCard))
+                    {
+                        deck.RemoveAt(i);
+                        playedCard.DestroyCard();
+                        Invoke(nameof(UpdateCardsLayout), 0.1f);
+                    }
                 }
-            }
+            } 
         }
     }
     private void SkipTurn()
@@ -195,7 +236,6 @@ public class Player : MonoBehaviour, IPlayer
                 deck[i].canPlay = false;
             }
         }
-        Debug.Log("everying should be fone");
         gameController.PlayerFinishedTurn(gameObject.GetComponent<Player>(), null);
     }
     public void CheckForJumpIn()
@@ -252,10 +292,21 @@ public class Player : MonoBehaviour, IPlayer
     private void DrawHand()
     {
         ClearHand();
-        for (int i = 0; i < 7; i++)
+        if (server.active)
         {
-            DrawCard();
+            for (int i = 0; i < 7; i++)
+            {
+                DrawCard();
+            }
         }
+        else if (client.active)
+        {
+            client.DrawHand();
+        }
+    }
+    public void RequestCardFromServer()
+    {
+        client.DrawCardFromServer();
     }
     public Card DrawCard()
     {
@@ -284,15 +335,7 @@ public class Player : MonoBehaviour, IPlayer
 
         return instantiatedCard;
     }
-    private void ClearHand()
-    {
-        for (int i = 0; i < cardObject.transform.childCount; i++)
-        {
-            cardObject.transform.GetChild(i).GetComponent<Card>().DestroyCard();
-        }
-        deck.Clear();
-    }
-    private Card DrawCard(Card card)
+    public Card DrawCard(Card card)
     {
         Card instantiatedCard = Instantiate(cardObject, transform.Find(cardsName)).GetComponent<Card>();
         lock (deck)
@@ -314,7 +357,7 @@ public class Player : MonoBehaviour, IPlayer
 
         return instantiatedCard;
     }
-    private Card DrawCard(int num, CardColor color)
+    public Card DrawCard(int num, CardColor color)
     {
         Card instantiatedCard = Instantiate(cardObject, transform.Find(cardsName)).GetComponent<Card>();
         lock (deck)
@@ -335,6 +378,11 @@ public class Player : MonoBehaviour, IPlayer
         Invoke(nameof(UpdateCardsLayout), 0.1f);
 
         return instantiatedCard;
+    }
+    private void ClearHand()
+    {
+        transform.GetChild(0).GetComponent<HandLayout>().ClearDeck();
+        deck.Clear();
     }
     public bool GetCardPlayable(Card card) // Checks if the given card can be played on top of the top card
     {
@@ -610,7 +658,7 @@ public class Player : MonoBehaviour, IPlayer
         UnshowChallengeButtons();
     }
     public bool GetUnoed() { return unoed; }
-    public string GetIndex() { return name.Split(' ').Last(); }
+    public string GetIndex() { return gameObject.name.Split(' ').Last(); }
     public void SetGameobjectName(string name) { gameObject.name = name; }
     public bool GetStackPotential() { return stackPotential; }
 }

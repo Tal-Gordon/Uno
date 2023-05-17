@@ -4,6 +4,7 @@ using UnityEngine;
 using TMPro;
 using UnityEngine.UI;
 using System;
+using Unity.VisualScripting;
 
 public class JoinMenuController : MonoBehaviour
 {
@@ -109,17 +110,24 @@ public class JoinMenuController : MonoBehaviour
 
     public void RerenderServers()
     {
-        for (int i = 1; i < serversObject.transform.childCount; i++) 
+        try
         {
-            Destroy(serversObject.transform.GetChild(i).gameObject);
-        }
+            for (int i = 1; i < serversObject.transform.childCount; i++)
+            {
+                Destroy(serversObject.transform.GetChild(i).gameObject);
+            }
 
-        List<(string, string, bool)> newServers = client.GetServersRenderInfo();
-        for (int i = 0; i < newServers.Count; i++)
-        {
-            RenderServer(newServers[i].Item1, newServers[i].Item2, newServers[i].Item3);
+            List<(string, string, bool)> newServers = client.GetServersRenderInfo();
+            for (int i = 0; i < newServers.Count; i++)
+            {
+                RenderServer(newServers[i].Item1, newServers[i].Item2, newServers[i].Item3);
+            }
+            UpdateServersList();
         }
-        UpdateServersList();
+        catch
+        {
+            return;
+        }
     }
 
     public void RenderJoinedServer(string hostUsername, string player1Username, string player2Username, string player3Username)

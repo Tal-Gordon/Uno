@@ -88,7 +88,7 @@ public class AIplayer : MonoBehaviour
         {
             if (deck[i].canPlay) { hasPlayableCards = true; break; }
         }
-        if (!hasPlayableCards )
+        if (!hasPlayableCards)
         {
             Debug.Log("drawing cards");
             player.DrawCardsLogic();
@@ -96,7 +96,16 @@ public class AIplayer : MonoBehaviour
         else
         {
             Debug.Log("playing a card");
-            gameController.PlayerFinishedTurn(player, ChooseCardFromDeck(deck));
+            Card chosenCard = ChooseCardFromDeck(deck);
+            if (chosenCard != null)
+            {
+                gameController.PlayerFinishedTurn(player, chosenCard); 
+            }
+            else
+            {
+                Debug.Log("actually, drawing cards");
+                player.DrawCardsLogic();
+            }
         }
     }
     private Card ChooseCardFromDeck(List<Card> deck)

@@ -1,5 +1,7 @@
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics;
+using Unity.VisualScripting;
 using UnityEngine;
 
 public class HandLayout : MonoBehaviour
@@ -18,13 +20,11 @@ public class HandLayout : MonoBehaviour
     public void UpdateVariables()
     {
         cards.Clear();
-        int amountOfCards = 0;
 
         foreach (Transform child in transform)
         {
             if (child.gameObject.activeSelf)
             {
-                amountOfCards++;
                 cards.Add(child.gameObject);
             }
         }
@@ -106,5 +106,21 @@ public class HandLayout : MonoBehaviour
             return transform.parent.localPosition.y - (cardWidth / 2);
         }
         return transform.parent.localPosition.x - (cardWidth / 2);
+    }
+    public void ClearDeck()
+    {
+        cards.Clear();
+
+        GameObject[] allChildren = new GameObject[transform.childCount];
+
+        for (int i = 0; i < transform.childCount; i++)
+        {
+            allChildren[i] = transform.GetChild(i).gameObject;
+        }
+
+        for (int i = 0; i < allChildren.Length; i++)
+        {
+            Destroy(allChildren[i]);
+        }
     }
 }
