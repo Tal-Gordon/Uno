@@ -9,6 +9,7 @@ using System.Net.Sockets;
 using System.Threading;
 using System.Linq;
 using Unity.VisualScripting;
+using System.Security.Cryptography;
 
 public class Server : MonoBehaviour
 {
@@ -17,7 +18,7 @@ public class Server : MonoBehaviour
 
     public string serverName;
     public bool passwordLocked;
-    public string serverPassword;
+    public (string, byte[]) serverPassword; // Hash, salt
     public bool active = false; // Used by Game Controller to distinguish between host and clients
     // Special rules settings
     public bool stacking = false;
@@ -38,7 +39,6 @@ public class Server : MonoBehaviour
     private readonly string multicastAddress = "239.255.42.99";
     private readonly ushort multicastPort = 15000;
     private readonly ushort defaultPort = 11111;
-    private ushort userPort;
     private string localIP;
     private void Awake()
     {
@@ -50,9 +50,7 @@ public class Server : MonoBehaviour
 
         Instance = this;
         DontDestroyOnLoad(gameObject);
-    }
-    public void ManualStart()
-    {
+
         // Trick to find local IP address
         // Connecting a UDP socket and reading it's local endpoint
         using (Socket socket = new(AddressFamily.InterNetwork, SocketType.Dgram, 0))
@@ -61,6 +59,10 @@ public class Server : MonoBehaviour
             IPEndPoint endPoint = socket.LocalEndPoint as IPEndPoint;
             localIP = endPoint.Address.ToString();
         }
+    }
+    public void ManualStart()
+    {
+        active = true;
 
         multicastServer = SetupMulticastSocket();
         server = SetupServer();
@@ -68,8 +70,6 @@ public class Server : MonoBehaviour
 
         StartCoroutine(SendMessageToMulticastGroup());
         StartCoroutine(ProcessReceivedData());
-
-        active = true;
     }
     private Socket SetupServer()
     {
@@ -89,12 +89,15 @@ public class Server : MonoBehaviour
         server.BeginAccept(
             (ar) =>
             {
-                Socket listener = (Socket)ar.AsyncState;
-                Socket client = listener.EndAccept(ar);
+                if (SceneManager.GetActiveScene().name == "MainMenu")
+                {
+                    Socket listener = (Socket)ar.AsyncState;
+                    Socket client = listener.EndAccept(ar);
 
-                Thread clientThread = new(() => { SocketReceiveThread(client); });
-                clientThread.Start();
-                ServerAcceptConnections();
+                    Thread clientThread = new(() => { SocketReceiveThread(client); });
+                    clientThread.Start();
+                    ServerAcceptConnections(); 
+                }
             }
         , server);
     }
@@ -116,19 +119,22 @@ public class Server : MonoBehaviour
     public IEnumerator SendMessageToMulticastGroup()
     {
         byte[] buffer = new byte[8192];
-        string msg = $"multicast;{localIP};{defaultPort};{serverName};{connectedClients.Count + 1};{passwordLocked}";
-        // Command identifier, server's own IP address, server name, number of already connected clients, password requirement
-        // Delimiter is ;
-        buffer = Encoding.Unicode.GetBytes(msg);
 
-        while (true)
+        while (active && SceneManager.GetActiveScene().name == "MainMenu")
         {
+            string msg = $"multicast;{localIP};{defaultPort};{serverName};{connectedClients.Count + 1};{passwordLocked}";
+            // Command identifier, server's own IP address, server's port, server name, number of already connected clients, password requirement
+
+            buffer = Encoding.Unicode.GetBytes(msg);
+
             multicastServer.BeginSend(new List<ArraySegment<byte>> { new ArraySegment<byte>(buffer) }, SocketFlags.None,
                 (ar) =>
                 {
                     int bytesSent = multicastServer.EndSend(ar);
+                    Array.Clear(buffer, 0, buffer.Length);
                 }
                 , null);
+
             yield return new WaitForSeconds(1f);
         }
     }
@@ -185,6 +191,7 @@ public class Server : MonoBehaviour
                 Array.Clear(sendBuffer, 0, sendBuffer.Length);
             }
             , null);
+        Debug.Log(message);
     }
 
     private IEnumerator ProcessReceivedData()
@@ -226,17 +233,26 @@ public class Server : MonoBehaviour
             case "connect":
             {
                 string clientName = parts[1];
-                if (parts.Length > 3) { string password = parts[2]; }
-                // TODO: verify password
+                bool passwordVerification = !passwordLocked; // If passwordLocked, verification required. else, verified automatically.
 
-                if (connectedClients.Count < 3)
-                {
-                    connectedClients.Add((socket, clientName));
-                    hostMenuController.ConnectNewClient(clientName);
-                    connectedUsernames = hostMenuController.GetPlayersUsernames();
-                    return $"ok;{connectedUsernames[0]};{connectedUsernames[1]};{connectedUsernames[2]};{connectedUsernames[3]}";
+                if (parts.Length > 3) 
+                { 
+                    string submittedPassword = parts[2]; 
+                    passwordVerification = VerifyPassword(submittedPassword, serverPassword.Item1, serverPassword.Item2);
                 }
-                else { return "full"; }
+
+                if (passwordVerification)
+                {
+                    if (connectedClients.Count < 3)
+                    {
+                        connectedClients.Add((socket, clientName));
+                        hostMenuController.ConnectNewClient(clientName);
+                        connectedUsernames = hostMenuController.GetPlayersUsernames();
+                        return $"ok;{connectedUsernames[0]};{connectedUsernames[1]};{connectedUsernames[2]};{connectedUsernames[3]}";
+                    }
+                    else { return "full"; } 
+                }
+                else { return "rejected"; }
             }
             case "disconnect":
             {
@@ -374,6 +390,42 @@ public class Server : MonoBehaviour
         }
     }
 
+    private string HashPassword(string password, byte[] salt)
+    {
+        int iterations = 10000; // Number of iterations
+        int hashByteSize = 32; // Size of the hash in bytes
+
+        Rfc2898DeriveBytes pbkdf2 = new(password, salt, iterations);
+        byte[] hash = pbkdf2.GetBytes(hashByteSize);
+
+        // Combine the salt and hash into a single byte array
+        byte[] hashWithSalt = new byte[salt.Length + hash.Length];
+        Array.Copy(salt, 0, hashWithSalt, 0, salt.Length);
+        Array.Copy(hash, 0, hashWithSalt, salt.Length, hash.Length);
+
+        return Convert.ToBase64String(hashWithSalt);
+    }
+
+    public string HashPassword(string password, out byte[] salt)
+    {
+        int saltByteSize = 16; // Size of the salt in bytes
+
+        // Generate a random salt
+        using (var rng = RandomNumberGenerator.Create())
+        {
+            salt = new byte[saltByteSize];
+            rng.GetBytes(salt);
+        }
+
+        return HashPassword(password, salt);
+    }
+
+    private bool VerifyPassword(string password, string storedPassword, byte[] salt)
+    {
+        string HashedGivenPassword = HashPassword(password, salt);
+        return storedPassword.Equals(HashedGivenPassword);
+    }
+
     private void InformClients(string message)
     {
         for (int i = 0; i < connectedClients.Count; i++)
@@ -413,8 +465,11 @@ public class Server : MonoBehaviour
             SendMessageToClient(connectedClients[i].Item1, "disconnect");
         }
         multicastServer.Close();
-        server.Close();
-        active = false;
+        if (server != null && server.Connected)
+        {
+            server.Close();
+        }
+        active = false; 
         if (SceneManager.GetActiveScene().name == "Game")
         {
             SceneManager.LoadScene("MainMenu");

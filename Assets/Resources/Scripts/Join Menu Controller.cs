@@ -5,6 +5,7 @@ using TMPro;
 using UnityEngine.UI;
 using System;
 using Unity.VisualScripting;
+using System.Text;
 
 public class JoinMenuController : MonoBehaviour
 {
@@ -16,15 +17,19 @@ public class JoinMenuController : MonoBehaviour
     private GameObject serversObject;
     private GameObject joinedServer;
     private Client client;
+    private Sprite _lock;
 
     private readonly string serversPrefabPath = "Prefabs/Server";
     private readonly string serversObjectName = "Servers";
     private readonly string joinedServerName = "Joined server";
+    private readonly string lockImagePath = "Graphics/UI/lock";
 
     void Start()
     {
         serversObject = transform.Find(serversObjectName).GetChild(0).GetChild(0).gameObject; // Points to the location of the rendered servers gameobjects
         joinedServer = transform.Find(joinedServerName).gameObject;
+        _lock = Resources.Load<Sprite>(lockImagePath);
+
         client = Client.Instance;
         client.ManualStart();
 
@@ -95,17 +100,45 @@ public class JoinMenuController : MonoBehaviour
         GameObject server = Resources.Load<GameObject>(serversPrefabPath);
         server.transform.GetChild(0).GetComponent<TextMeshProUGUI>().text = serverName;
         server.transform.GetChild(1).GetComponent<TextMeshProUGUI>().text.Split("/")[0] = amountOfConnected;
-        //server.transform.GetChild(2)
+        if (passwordRequirement) { server.transform.GetChild(2).GetComponent<Image>().sprite = _lock; }
 
         GameObject instantiatedServer = Instantiate(server, serversObject.transform);
-        instantiatedServer.GetComponent<Button>().onClick.AddListener(AskToJoinServer);
+
+        if (passwordRequirement) { instantiatedServer.GetComponent<Button>().onClick.AddListener(OpenPasswordMenu); }
+        else { instantiatedServer.GetComponent<Button>().onClick.AddListener(() => AskToJoinServer(string.Empty)); }
     }
 
-    void AskToJoinServer()
+    void AskToJoinServer(string password)
     {
         GameObject server = UnityEngine.EventSystems.EventSystem.current.currentSelectedGameObject;
         string serverName = server.transform.GetChild(0).GetComponent<TextMeshProUGUI>().text;
-        client.AskToJoin(serverName);
+        client.AskToJoin(serverName, password);
+    }
+
+    public void OpenPasswordMenu()
+    {
+        GameObject passwordMenu = transform.Find("Password input").gameObject;
+        passwordMenu.SetActive(true);
+        TMP_InputField inputField = passwordMenu.transform.GetChild(0).GetComponent<TMP_InputField>();
+        inputField.Select();
+        passwordMenu.transform.Find("Buttons").GetChild(1).GetComponent<Button>().onClick.AddListener(() => PasswordMenuOK(inputField.text));
+    }
+
+    public void PasswordMenuOK(string password) // workaround
+    {
+        AskToJoinServer(password);
+        ClosePasswordMenu();
+    }
+
+    public void ClosePasswordMenu()
+    {
+        GameObject passwordMenu = transform.Find("Password input").gameObject;
+
+        TMP_InputField inputField = passwordMenu.transform.GetChild(0).GetComponent<TMP_InputField>();
+        inputField.Select();
+        inputField.text = string.Empty;
+
+        passwordMenu.SetActive(false);
     }
 
     public void RerenderServers()

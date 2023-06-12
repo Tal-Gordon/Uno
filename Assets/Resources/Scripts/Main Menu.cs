@@ -90,7 +90,10 @@ public class MainMenu : MonoBehaviour
         if (button.transform.parent.GetChild(1).GetComponent<TMP_InputField>().text != string.Empty) // We check if server creation menu password field is non empty
         {
             Server.Instance.passwordLocked = true;
-            Server.Instance.serverPassword = button.transform.parent.GetChild(1).GetComponent<TMP_InputField>().text;
+            string password = button.transform.parent.GetChild(1).GetComponent<TMP_InputField>().text;
+
+            string hashedPassword = Server.Instance.HashPassword(password, out byte[] salt);
+            Server.Instance.serverPassword = (hashedPassword, salt);
         }
         // More stuff to set
         hostMenu.SetActive(true);

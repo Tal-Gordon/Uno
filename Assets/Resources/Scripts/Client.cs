@@ -49,10 +49,8 @@ public class Client : MonoBehaviour
     }
     public void ManualStart()
     {
-        // Set up the client socket
         multicastClient = SetupMulticastClient();
 
-        // Start the thread to receive data
         multicastReceiveThread = new Thread(() => SocketReceiveThread(multicastClient));
         multicastReceiveThread.Start();
 
@@ -173,6 +171,12 @@ public class Client : MonoBehaviour
             {
                 try
                 {
+                    Debug.Log($"client received: '{receivedMessage}'");
+                    if (receivedMessage == string.Empty)
+                    {
+                        socket.Close();
+                        continue;
+                    }
                     string messageToSend = GetResponse(receivedMessage); // Message process
 
                     if (messageToSend != string.Empty)
@@ -183,7 +187,13 @@ public class Client : MonoBehaviour
                 catch (Exception e)
                 {
                     Debug.LogError(e); // Likely connection closed by server
-                    if (receivedMessage == string.Empty) { socket.Close(); break; }
+                    // Check if socket is connected, close if not
+                    bool part1 = socket.Poll(1000, SelectMode.SelectRead);
+                    bool part2 = socket.Available == 0;
+                    if ((part1 && part2) || !socket.Connected)
+                    {
+                        socket.Close();
+                    }
                 }
             }
             receivedMessages.Clear();
@@ -192,7 +202,7 @@ public class Client : MonoBehaviour
 
     private IEnumerator ProcessReceivedMulticastData()
     {
-        while (true)
+        while (SceneManager.GetActiveScene().name == "MainMenu")
         {
             try
             {
@@ -200,12 +210,10 @@ public class Client : MonoBehaviour
             }
             catch
             {
-                break;
+                continue;
             }
 
             yield return new WaitForSeconds(1f);
-
-            // TODO: stop function when connected to server, and restart if disconnected
         }
     }
 
@@ -221,7 +229,7 @@ public class Client : MonoBehaviour
         }
     }
 
-    public void AskToJoin(string serverName, bool password = false)
+    public void AskToJoin(string serverName, string password)
     {
         string ipAddress = string.Empty;
         ushort port = ushort.MinValue;
@@ -239,7 +247,7 @@ public class Client : MonoBehaviour
 
         string messageToSend = $"connect;{Profile.username}";
         // command identifier "connect", username
-        if (password) { messageToSend += ";something"; } // TODO
+        if (password != string.Empty) { messageToSend += $";{password}"; }
 
         if (client != null)
         {
@@ -282,6 +290,18 @@ public class Client : MonoBehaviour
 
                 return string.Empty;
             }
+            case "rejected":
+            {
+                Debug.LogError("Login rejected: wrong password");
+
+                return string.Empty;
+            }
+            case "full":
+            {
+                Debug.LogError("Login rejected: server is full");
+
+                return string.Empty;
+            }
             case "multicast":
             {
                 string serverIpAddress = parts[1];
@@ -298,13 +318,11 @@ public class Client : MonoBehaviour
                         if (serversInfo[i].IpAddress == serverIpAddress) // We find the server that sent the multicast in our list
                         {
                             serverExists = true;
-                            //if (serversInfo[i].port != serverPort) // Update the port, if needed
-                            //{
-                            //    serversInfo[i] = (serversInfo[i].IpAddress, serverPort, serversInfo[i].serverName, numOfConnected, serversInfo[i].passReq, serversInfo[i].isAlive);
-                            //}
 
-                            // Set isAlive property as true
+                            string tempVar_numOfConnected = serversInfo[i].numOfConnected;
+                            // Set isAlive property as true, and update numOfConnected value
                             serversInfo[i] = (serversInfo[i].IpAddress, serversInfo[i].port, serversInfo[i].serverName, numOfConnected, serversInfo[i].passReq, true);
+                            if (tempVar_numOfConnected != numOfConnected) { UpdateRenderedServers(); }
                         }
                     }
 
@@ -507,7 +525,10 @@ public class Client : MonoBehaviour
             {
                 // Handle unknown commands
                 Debug.LogError($"Server sent unknown command: {command}");
-                DisconnectFromServer();
+                if (command != "multicast")
+                {
+                    DisconnectFromServer();
+                }
                 return string.Empty;
             }
         }
