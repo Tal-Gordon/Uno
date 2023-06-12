@@ -538,7 +538,7 @@ public class Client : MonoBehaviour
     {
         while (true)
         {
-            yield return new WaitForSeconds(2f);
+            yield return new WaitForSeconds(2.5f);
 
             lock (serversInfo)
             {
