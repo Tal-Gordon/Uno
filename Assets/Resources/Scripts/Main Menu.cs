@@ -87,7 +87,7 @@ public class MainMenu : MonoBehaviour
     {
         GameObject button = UnityEngine.EventSystems.EventSystem.current.currentSelectedGameObject;
         Server.Instance.serverName = button.transform.parent.GetChild(0).GetComponent<TMP_InputField>().text;
-        if (button.transform.parent.GetChild(1).GetComponent<TMP_InputField>().text != string.Empty) // We check if server creation menu password field is non empty
+        if (button.transform.parent.GetChild(1).GetComponent<TMP_InputField>().text != string.Empty) // We check if server creation menu password field is non-empty
         {
             Server.Instance.passwordLocked = true;
             string password = button.transform.parent.GetChild(1).GetComponent<TMP_InputField>().text;

@@ -2075,7 +2075,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!224 &557446182
 RectTransform:
   m_ObjectHideFlags: 0
@@ -2675,6 +2675,7 @@ MonoBehaviour:
   selfPlayer: {fileID: 0}
   topCard: {fileID: 0}
   directionClockwise: 1
+  unoedPlayers: 00000000
   stacking: 0
   sevenZero: 0
   jumpIn: 0

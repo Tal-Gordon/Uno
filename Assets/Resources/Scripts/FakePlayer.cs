@@ -75,10 +75,6 @@ public class FakePlayer : MonoBehaviour, IPlayer
     {
         transform.GetChild(0).GetComponent<HandLayout>().UpdateVariables();
     }
-    public void ChangeHands()
-    {
-
-    }
     public List<Card> GetDeck() { return deck; }
     public void SetDeck(List<Card> newDeck) 
     {

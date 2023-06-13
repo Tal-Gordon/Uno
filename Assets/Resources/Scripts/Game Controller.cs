@@ -15,6 +15,7 @@ public class GameController : MonoBehaviour
 
     public static Dictionary<string, ((int, CardColor), int)> gameCards = new();
     public bool directionClockwise = true;
+    public bool[] unoedPlayers = new bool[4];
     // Special rules settings
     public bool stacking = false;
     public bool sevenZero = false;
@@ -27,8 +28,6 @@ public class GameController : MonoBehaviour
     private Server server;
     private Client client;
 
-    private CardColor challengedColor;
-    private bool[] unoedPlayers = new bool[4];
     private void Awake()
     {
         server = Server.Instance; client = Client.Instance;
@@ -101,7 +100,6 @@ public class GameController : MonoBehaviour
     {
         topCard = transform.Find("Discard pile").GetComponent<Card>();
 
-        //RegeneratePlayersList();
         selfPlayer = transform.Find("Player stands").GetChild(0).GetComponent<Player>();
 
         directionArrows = transform.Find("Direction Arrows").gameObject;
@@ -145,31 +143,7 @@ public class GameController : MonoBehaviour
                 }
             //}
         }
-        //var firstPlayer = players.FirstOrDefault(player => player.GetIndex() == "1");
-        //if (firstPlayer != null)
-        //{
-        //    firstPlayer.FinishTurn(GetTopCard());
-        //}
         PlayerFinishedTurn(GetIPlayerByIndex("1"), GetTopCard());
-        //for (int i = 0; i < players.Count; i++)
-        //{
-        //    if (players[i] is Player)
-        //    {
-        //        Player player = (Player)players[i];
-        //        if (player.GetIndex() == "1")
-        //        {
-        //            player.FinishTurn(GetTopCard());
-        //        }
-        //    }
-        //    else
-        //    {
-        //        FakePlayer player = (FakePlayer)players[i];
-        //        if (player.GetIndex() == "1")
-        //        {
-        //            player.FinishTurn(GetTopCard());
-        //        }
-        //    }
-        //}
     }
 
     private void Update()
@@ -208,7 +182,7 @@ public class GameController : MonoBehaviour
         for (int i = 0; i < 4; i++)
         {
             transform.Find("Player stands").GetChild(i).gameObject.name = $"Player {index}";
-            index = int.Parse(GetNextPlayerIndex(index)).ToString(); // Direction at start of game is clockwise
+            index = GetNextPlayerIndex(index); // Direction at start of game is clockwise
         }
     }
 
@@ -219,10 +193,14 @@ public class GameController : MonoBehaviour
             player.FinishTurn(playedCard); // Only removes card from deck
             int skipModifier = 0;
             bool abortMethod = false; // Should only be true if awaiting additional input from player
-            bool playerYetToUno = false;
+            bool playerYetToUno = !unoedPlayers[int.Parse(player.GetIndex()) - 1];
             for (int i = 0; i < players.Count; i++)
             {
                 players[i].FinishTurn(null); // Fix for stray turn
+                if (players[i].GetDeck().Count > 1 && unoedPlayers[int.Parse(player.GetIndex()) - 1])
+                {
+                    unoedPlayers[int.Parse(player.GetIndex()) - 1] = false;
+                }
             }
 
             if (playedCard != null)
@@ -230,14 +208,13 @@ public class GameController : MonoBehaviour
                 Debug.Log($"player {player.GetIndex()} just played {playedCard.GetNumber()} {playedCard.GetColor()}");
                 if (GetPlayerNumOfCardsByIndex(player.GetIndex()) != 0)
                 {
-                    if (!noBluffing && playedCard.GetNumber() == 15) { challengedColor = playedCard.GetColor(); }
                     SetTopCard(playedCard);
                     if (DoCardAction(playedCard, player.GetIndex())) // Return true if the game should skip the turn of the next player, false otherwise
                     {
                         skipModifier = directionClockwise ? 1 : -1;
                     }
                     //  Additional input is required from the player, or from the next. Game should wait before giving next player turn, instead when finished player will call the method again with a null card
-                    if (sevenZero && playedCard.GetNumber() == 7) // || (stacking && (playedCard.GetNumber() is 11 or 15))) Remove later
+                    if (sevenZero && playedCard.GetNumber() == 7) 
                     {
                         abortMethod = true;
                     }
@@ -245,34 +222,17 @@ public class GameController : MonoBehaviour
                     {
                         abortMethod = true;
                     }
-                    if (GetPlayerNumOfCardsByIndex(player.GetIndex()) == 1 && !unoedPlayers[int.Parse(player.GetIndex())-1])
+                    if (GetPlayerNumOfCardsByIndex(player.GetIndex()) == 1 && !unoedPlayers[int.Parse(player.GetIndex())-1] && !(player is Player && (Player)player == selfPlayer))
                     {
-                        playerYetToUno = true;
-                        if (!player.Equals(gameObject))
-                        {
-                            players.OfType<Player>().First().ShowCallOutButton();
-                        }
+                        selfPlayer.ShowCallOutButton();
                     } 
                 }
                 else
                 {
                     if (server.active) { selfPlayer.ShowMatchEndPanelServer(); }
                     else { selfPlayer.ShowMatchEndPanelClient(); }
+                    abortMethod = true;
                 }
-            }
-
-            if (!playerYetToUno)
-            {
-                selfPlayer.UnshowCallOutButton();
-            }
-
-            if (jumpIn)
-            {
-                //for (int i = 0; i < players.Count; i++)
-                //{
-                //    players[i].CheckForJumpIn();
-                //}
-                //yield return new WaitForSeconds(1.5f);
             }
 
             if (player is Player) // self or ai
@@ -284,23 +244,11 @@ public class GameController : MonoBehaviour
             if (!abortMethod)
             {
                 string nextPlayerIndex = GetNextPlayerIndex((int.Parse(player.GetIndex()) + skipModifier).ToString());
-                //if (nextPlayerIndex == selfPlayer.GetIndex()) { Invoke(nameof(selfPlayer.GetTurnAndCheckCards), 1f); }
                 if (GetIPlayerByIndex(nextPlayerIndex) is Player) 
                 {
                     ((Player)GetIPlayerByIndex(nextPlayerIndex)).Invoke("GetTurnAndCheckCards", 1f); 
                 }
-
-                //for (int i = 0; i < players.Count; i++)
-                //{
-                //    if (players[i].GetIndex() == nextPlayerIndex)
-                //    {
-                //        players[i].Invoke("GetTurnAndCheckCards", 1f);
-                //        //players[i].GetTurnAndCheckCards();
-                //        // For now this works, in the final version the server will send each client the permission to play, which won't be instantaneous and won't require Invoke
-                //        break;
-                //    }
-                //}
-                //GetIPlayerByIndex(nextPlayerIndex).
+                VisualizeTurn(nextPlayerIndex);
             }
         }
         catch (Exception e)
@@ -326,9 +274,17 @@ public class GameController : MonoBehaviour
         if (server.active)
         {
             server.CalledOutUnunoed(callingPlayerIndex);
+            CalledOut();
+        }
+        else if (client.active)
+        {
+            client.CalledOutUnunoed();
         }
     }
-
+    /// <summary>
+    /// For server use
+    /// </summary>
+    /// <returns></returns>
     public (int, CardColor) DrawCard()
     {
         var card = gameCards.ElementAt(UnityEngine.Random.Range(0, gameCards.Count)).Value;
@@ -345,45 +301,26 @@ public class GameController : MonoBehaviour
         {
             case 10: // zero
             {
-                if (sevenZero)
-                {
-                    //RotateHands();
-                }
                 return false;
             }
             case 7: // seven
             {
-                if (sevenZero)
-                {
-                    IPlayer player = GetIPlayerByIndex(playerIndex);
-                    if (player is Player)
-                    {
-                        player.ChangeHands();
-                    }
-                }
                 return false; 
             }
             case 11: // draw 2
             {
-                if (stacking)
+                if (GetIPlayerByIndex(GetNextPlayerIndex(playerIndex)).Equals(selfPlayer) && client.active)
                 {
-                    //StackCard(playerIndex, card);
+                    for (int i = 0; i < 2; i++)
+                    {
+                        client.DrawCardFromServer();
+                    }
                 }
                 else
                 {
-                    if (GetIPlayerByIndex(GetNextPlayerIndex(playerIndex)).Equals(selfPlayer) && client.active)
+                    for (int i = 0; i < 2; i++)
                     {
-                        for (int i = 0; i < 2; i++)
-                        {
-                            client.DrawCardFromServer();
-                        }
-                    }
-                    else
-                    {
-                        for (int i = 0; i < 2; i++)
-                        {
-                            GetIPlayerByIndex(GetNextPlayerIndex(playerIndex)).DrawCard();
-                        }
+                        GetIPlayerByIndex(GetNextPlayerIndex(playerIndex)).DrawCard();
                     }
                 }
                 return true;
@@ -422,28 +359,18 @@ public class GameController : MonoBehaviour
                 }
                 // Second part of play
 
-                if (stacking)
+                if (GetIPlayerByIndex(GetNextPlayerIndex(playerIndex)).Equals(selfPlayer) && client.active)
                 {
-                    //StackCard(playerIndex, card);
+                    for (int i = 0; i < 4; i++)
+                    {
+                        client.DrawCardFromServer();
+                    }
                 }
                 else
                 {
-                    if (noBluffing)
+                    for (int i = 0; i < 4; i++)
                     {
-                        if (GetIPlayerByIndex(GetNextPlayerIndex(playerIndex)).Equals(selfPlayer) && client.active)
-                        {
-                            for (int i = 0; i < 4; i++)
-                            {
-                                client.DrawCardFromServer();
-                            }
-                        }
-                        else
-                        {
-                            for (int i = 0; i < 4; i++)
-                            {
-                                GetIPlayerByIndex(GetNextPlayerIndex(playerIndex)).DrawCard();
-                            }
-                        }
+                        GetIPlayerByIndex(GetNextPlayerIndex(playerIndex)).DrawCard();
                     }
                 }
                 return true;
@@ -453,12 +380,8 @@ public class GameController : MonoBehaviour
     }
     public IPlayer GetIPlayerByIndex(string index)
     {
-        //bool selfPlayerBool = false;
-        //if (index == selfPlayer.GetIndex()) { selfPlayerBool = true; }
         for (int i = 0; i < players.Count; i++)
         {
-            //if (selfPlayerBool && players[i] is Player) { return (Player)players[i]; }
-            //else if (!selfPlayerBool && players[i] is FakePlayer) { return (FakePlayer)players[i]; }
             try
             {
                 if (players[i].GetIndex() == index) { return players[i]; }
@@ -482,16 +405,14 @@ public class GameController : MonoBehaviour
     }
     public int GetPlayerNumOfCardsByIndex(string index)
     {
-        //for (int i = 0; i < players.Count; i++)
-        //{
-        //    GameObject player = transform.Find("Player stands").GetChild(i).gameObject;
-        //    if (player.name.Split(' ').Last() == index)
-        //    {
-        //        return player.transform.GetChild(0).childCount;
-        //    }
-        //}
-        return GetIPlayerByIndex(index).GetDeck().Count;
-        //return -1;
+        try
+        {
+            return GetIPlayerByIndex(index).GetDeck().Count;
+        }
+        catch (NullReferenceException)
+        {
+            return -1;
+        }
     }
     private void ChangeDirection()
     {
@@ -526,74 +447,56 @@ public class GameController : MonoBehaviour
 
         PlayerFinishedTurn(selfPlayer, null);
     }
-
-    private void RotateHands(List<Card> newDeck)
-    {
-        int directionModifier = directionClockwise ? -1 : 1; // It's backwards because otherwise it doesn't work
-
-        List<List<Card>> tempDecks = new();
-
-        for (int i = 0; i < players.Count; i++)
-        {
-            int index = ((i + directionModifier + 4) % players.Count);
-            if (index != int.Parse(selfPlayer.GetIndex()))
-            {
-                tempDecks.Add(new List<Card>(players[index].GetDeck()));
-            }
-            else
-            {
-                tempDecks.Add(newDeck);
-            }
-        }
-
-        for (int i = 0; i < players.Count; i++)
-        {
-            players[i].SetDeck(tempDecks[i]);
-        }
-    }
-
-    private void ForceDrawCards(Player player, int amountOfCards)
-    {
-        for (int i = 0; i < amountOfCards; i++)
-        {
-            player.DrawCard(); 
-        }
-    }
-    public void StackCard(string playerIndex, Card card)
-    {
-        //string nextPlayerIndex = GetNextPlayerIndex(playerIndex);
-
-        //Player nextPlayer = GetIPlayerByIndex(nextPlayerIndex);
-        //List<Card> playerDeck = nextPlayer.GetDeck();
-        //bool hasCardToStack = false;
-        //for (int i = 0; i < playerDeck.Count; i++)
-        //{
-        //    if (playerDeck[i].GetNumber() == card.GetNumber())
-        //    {
-        //        hasCardToStack = true;
-        //        break;
-        //    }
-        //}
-
-        //stacked += 2;
-        //if (card.GetNumber() == 15) { stacked += 2; }
-
-        //if (hasCardToStack)
-        //{
-        //    nextPlayer.GetTurnAndCheckForStacking(card);
-        //}
-        //else
-        //{
-        //    ForceDrawCards(nextPlayer, stacked);
-        //    stacked = 0;
-        //    PlayerFinishedTurn(nextPlayer, null);
-        //}
-        // TODO
-    }
     public string GetNextPlayerIndex(string playerIndex)
     {
         int directionModifier = directionClockwise ? 1 : -1; // Ternary operator. Can be rewritten as: If (directionClockwise) { multiplier = 1; } else { multiplier = -1; }
         return (((int.Parse(playerIndex) - 1 + directionModifier + 4) % 4) + 1).ToString(); // Calculates the index of the next player based on the current player's index and the direction of play
+    }
+    private void VisualizeTurn(string playerIndex)
+    {
+        for (int i = 0; i < 4; i++)
+        {
+            transform.Find("Player stands").GetChild(i).GetComponent<SpriteRenderer>().color = new Color32(3, 169, 245, 255);
+        }
+        transform.Find("Player stands").Find($"Player {playerIndex}").GetComponent<SpriteRenderer>().color = new Color32(73, 255, 101, 255);
+    }
+    public void CalledOut()
+    {
+        IPlayer player = selfPlayer;
+        selfPlayer.UnshowCallOutButton();
+
+        for (int i = 0; i < players.Count; i++)
+        {
+            if (players[i].GetDeck().Count == 1 && unoedPlayers[i] == false)
+            {
+                player = players[i];
+                break;
+            }
+        }
+        for (int i = 0; i < 2; i++)
+        {
+            if (player is Player && (Player)player == selfPlayer)
+            {
+                if (client.active)
+                {
+                    client.DrawCardFromServer();
+                }
+                else if (server.active)
+                {
+                    DrawCard();
+                    server.DrawedCard(selfPlayer.GetIndex());
+                } 
+            }
+            else if (player is Player) // ai
+            {
+                player.DrawCard();
+                server.DrawedCard(player.GetIndex());
+            }
+            else
+            {
+                player.DrawCard();
+            }
+        }
     }
     private void RegeneratePlayersList()
     {

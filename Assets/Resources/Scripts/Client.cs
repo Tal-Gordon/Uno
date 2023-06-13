@@ -240,9 +240,11 @@ public class Client : MonoBehaviour
             {
                 ipAddress = serversInfo[i].IpAddress;
                 port = serversInfo[i].port;
+                break;
             }
         }
-
+        
+        if (ipAddress == string.Empty) { Debug.LogError("Unknown error: giving up connection attempt"); return; }
         client = SetupClient(ipAddress, port);
 
         string messageToSend = $"connect;{Profile.username}";
@@ -363,6 +365,7 @@ public class Client : MonoBehaviour
             case "gamestart":
             {
                 index = parts[1];
+                // todo: index everyone else
                 stacking =    parts[2] == "t";
                 sevenZero =   parts[3] == "t";
                 jumpIn =      parts[4] == "t";
@@ -412,19 +415,19 @@ public class Client : MonoBehaviour
                 }
                 return string.Empty;
             }
-            case "calledout":
-            {
-                string callingPlayerIndex = parts[1];
-                if (gameController.selfPlayer.GetDeck().Count == 1 && !gameController.selfPlayer.GetUnoed()) 
-                {
-                    for (int i = 0; i < 2; i++)
-                    {
-                        DrawCardFromServer();
-                    }
-                }
-                gameController.selfPlayer.UnshowCallOutButton();
-                return string.Empty;
-            }
+            //case "calledout":
+            //{
+            //    string callingPlayerIndex = parts[1];
+            //    if (gameController.selfPlayer.GetDeck().Count == 1 && !gameController.selfPlayer.GetUnoed()) 
+            //    {
+            //        for (int i = 0; i < 2; i++)
+            //        {
+            //            DrawCardFromServer();
+            //        }
+            //    }
+            //    gameController.selfPlayer.UnshowCallOutButton();
+            //    return string.Empty;
+            //}
             case "getdeck":
             {
                 string callingPlayerIndex = parts[1];
@@ -519,6 +522,27 @@ public class Client : MonoBehaviour
                     }
                     gameController.selfPlayer.DrawCard(num, color);
                 }
+                return string.Empty;
+            }
+            case "unoed":
+            {
+                gameController.selfPlayer.UnshowCallOutButton();
+                for (int i = 0; i < gameController.players.Count; i++)
+                {
+                    if (gameController.players[i].GetDeck().Count == 1 && gameController.unoedPlayers[i] == false)
+                    {
+                        gameController.unoedPlayers[i] = true;
+                        break;
+                    }
+                }
+
+                return string.Empty;
+            }
+            case "calledout":
+            {
+                string callingPlayerIndex = parts[1];
+                gameController.CalledOut();
+
                 return string.Empty;
             }
             default:
@@ -701,6 +725,15 @@ public class Client : MonoBehaviour
     {
         SendMessageToServer($"drawhand");
     }
+    public void CallUno()
+    {
+        SendMessageToServer($"uno;{gameController.selfPlayer.GetIndex()}");
+    }
+    public void CalledOutUnunoed()
+    {
+        SendMessageToServer($"callout;{gameController.selfPlayer.GetIndex()}");
+    }
+
     private IEnumerator TryRegisterPlayerMove(string playerIndex, int cardNum, CardColor cardColor, bool _null)
     {
         yield return new WaitForSeconds(1.1f);

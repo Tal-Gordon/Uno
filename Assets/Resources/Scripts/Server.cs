@@ -235,7 +235,7 @@ public class Server : MonoBehaviour
                 string clientName = parts[1];
                 bool passwordVerification = !passwordLocked; // If passwordLocked, verification required. else, verified automatically.
 
-                if (parts.Length > 3) 
+                if (parts.Length > 3 && passwordLocked) 
                 { 
                     string submittedPassword = parts[2]; 
                     passwordVerification = VerifyPassword(submittedPassword, serverPassword.Item1, serverPassword.Item2);
@@ -379,6 +379,22 @@ public class Server : MonoBehaviour
                     message += $";{cardInfo}";
                 }
                 return message;
+            }
+            case "uno":
+            {
+                string callingPlayerIndex = parts[1];
+                InformClients($"unoed;{callingPlayerIndex}");
+                gameController.selfPlayer.UnshowCallOutButton();
+
+                return string.Empty;
+            }
+            case "callout":
+            {
+                string callingPlayerIndex = parts[1];
+                InformClients($"calledout;{callingPlayerIndex}");
+                gameController.CalledOut();
+
+                return string.Empty;
             }
             default:
             {
@@ -702,9 +718,19 @@ public class Server : MonoBehaviour
             
         }
     }
-    public void DrawedCard()
+    public void DrawedCard(string index)
     {
-        InformClients($"drawedcard;{gameController.selfPlayer.GetIndex()}");
+        InformClients($"drawedcard;{index}");
+    }
+    public void CallOut()
+    {
+        InformClients($"calledout;{gameController.selfPlayer.GetIndex()}");
+        gameController.CalledOut();
+    }
+    public void CallUno()
+    {
+        InformClients($"unoed;{gameController.selfPlayer.GetIndex()}");
+        gameController.selfPlayer.UnshowCallOutButton();
     }
     private IEnumerator InformClientsLater(string message)
     {

@@ -9,7 +9,6 @@ public interface IPlayer
     void FinishTurn(Card playedCard);
     void StartNewGame();
     string GetIndex();
-    void ChangeHands();
     List<Card> GetDeck();
     void SetDeck(List<Card> deck);
     void SetDeck(string deckRepresentation);

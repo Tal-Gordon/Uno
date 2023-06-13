@@ -107,65 +107,14 @@ public class Player : MonoBehaviour, IPlayer
     {
         if (server.active)
         {
-            if (!stackPotential)
-            {
-                Card drawedCard;
-                if (gameController.drawToMatch)
-                {
-                    // We want to draw at least one card
-                    do
-                    {
-                        drawedCard = DrawCard();
-                    } while (!GetCardPlayable(drawedCard));
-
-                    if (gameController.forcePlay) { gameController.PlayerFinishedTurn(this, drawedCard); return; }
-                    else { ShowKeepPlayButtons(drawedCard); }
-                }
-                else { DrawCard(); }
-            }
-            else
-            {
-                //for (int i = 0; i < gameController.stacked; i++)
-                //{
-                //    DrawCard();
-                //}
-            }
-            server.DrawedCard();
+            DrawCard();
+            server.DrawedCard(GetIndex());
         }
         else if (client.active)
         {
-            if (!stackPotential)
-            {
-                Card drawedCard;
-                if (gameController.drawToMatch)
-                {
-                    // We want to draw at least one card
-                    do
-                    {
-                        drawedCard = DrawCard();
-                    } while (!GetCardPlayable(drawedCard));
-
-                    if (gameController.forcePlay) { gameController.PlayerFinishedTurn(this, drawedCard); return; }
-                    else { ShowKeepPlayButtons(drawedCard); }
-                }
-                else
-                {
-                    client.DrawCardFromServer();
-                }
-            }
-            else
-            {
-                //for (int i = 0; i < gameController.stacked; i++)
-                //{
-                //    DrawCard();
-                //}
-            }
+            client.DrawCardFromServer();
         }
         SkipTurn();
-    }
-    public void GotCardFromServer()
-    {
-
     }
     public void GetTurnAndCheckCards()
     {
@@ -202,7 +151,7 @@ public class Player : MonoBehaviour, IPlayer
                 counter++;
             }
         }
-        return counter == 1 && deck.Count == 2;
+        return counter > 0 && deck.Count == 2;
     }
     public void FinishTurn(Card playedCard)
     {
@@ -303,10 +252,6 @@ public class Player : MonoBehaviour, IPlayer
         {
             client.DrawHand();
         }
-    }
-    public void RequestCardFromServer()
-    {
-        client.DrawCardFromServer();
     }
     public Card DrawCard()
     {
@@ -483,61 +428,6 @@ public class Player : MonoBehaviour, IPlayer
         gameController.PlayerFinishedTurn(gameObject.GetComponent<Player>(), toMutate);
         FinishColoring();
     }
-    public void ChangeHands()
-    {
-        if (!aiDriven)
-        {
-            GameObject arrows = canvas.transform.Find("Seven arrows").gameObject;
-            arrows.SetActive(true);
-            for (int i = 0; i < arrows.transform.childCount; i++)
-            {
-                arrows.transform.GetChild(i).GetComponent<Button>().onClick.AddListener(PickPlayerToSwapHands);
-                switch (gameController.GetTopCard().GetColor())
-                {
-                    case CardColor.Green:
-                    {
-                        arrows.transform.GetChild(i).GetComponent<Image>().color = new Color32(48, 247, 71, 255);
-                        break;
-                    }
-                    case CardColor.Yellow:
-                    {
-                        arrows.transform.GetChild(i).GetComponent<Image>().color = new Color32(230, 249, 45, 255);
-                        break;
-                    }
-                    case CardColor.Red:
-                    {
-                        arrows.transform.GetChild(i).GetComponent<Image>().color = new Color32(236, 39, 23, 255);
-                        break;
-                    }
-                    case CardColor.Blue:
-                    {
-                        arrows.transform.GetChild(i).GetComponent<Image>().color = new Color32(47, 248, 246, 255);
-                        break;
-                    }
-                }
-            }
-        }
-        else
-        {
-            //gameController.SwapHands(GetIndex(), playerAI.GetActionToDo("Seven"));
-            server.PlayedSeven(playerAI.GetActionToDo("Seven"));
-        }
-    }
-    public void PickPlayerToSwapHands()
-    {
-        GameObject player = UnityEngine.EventSystems.EventSystem.current.currentSelectedGameObject;
-        string pickedPlayerIndex = player.name.Split(' ').Last();
-
-        if (client.active) { client.PlayedSeven(pickedPlayerIndex); }
-        else if (server.active) { server.PlayedSeven(pickedPlayerIndex); }
-
-        GameObject arrows = canvas.transform.Find("Seven arrows").gameObject;
-        arrows.SetActive(false);
-    }
-    public void SwapHandsWithDeck(List<Card> deck)
-    {
-        gameController.SwapHands(GetIndex(), deck);
-    }
     private void UpdateCardsLayout()
     {
         transform.GetChild(0).GetComponent<HandLayout>().UpdateVariables();
@@ -632,6 +522,14 @@ public class Player : MonoBehaviour, IPlayer
     {
         unoed = true;
         canvas.transform.Find("Uno").gameObject.SetActive(false);
+        if (client.active)
+        {
+            client.CallUno();
+        }
+        else if (server.active)
+        {
+            server.CallUno();
+        }
     }
     public void CallOutUnunoed()
     {
